@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
-import { db } from '../db.js';
+import { db, ensureCampusInfrastructure } from '../db.js';
 import { generateToken, authenticateToken, AuthenticatedRequest } from '../middleware/auth.js';
 import { detectFaceBiometrics } from '../utils/faceClient.js';
 
@@ -182,7 +182,21 @@ authRouter.post('/register-student', async (req, res) => {
     }
 
     if (!selectedRoom) {
-      return res.status(400).json({ error: 'No hostel rooms found. Please configure hostel rooms first.' });
+      ensureCampusInfrastructure();
+      selectedRoom = db.prepare('SELECT * FROM rooms WHERE occupied_count < capacity LIMIT 1').get() ||
+                     db.prepare('SELECT * FROM rooms LIMIT 1').get();
+    }
+
+    if (!selectedRoom) {
+      const fallbackHostelId = 'hostel-tagore-main';
+      const fallbackBlockId = 'block-a';
+      const fallbackFloorId = 'floor-block-a-1';
+      const fallbackRoomId = 'room-block-a-101';
+      db.prepare(`INSERT OR IGNORE INTO hostels (id, name, code) VALUES (?, 'Tagore Central Hostel Complex', 'TCHC-01')`).run(fallbackHostelId);
+      db.prepare(`INSERT OR IGNORE INTO blocks (id, hostel_id, name, code) VALUES (?, ?, 'Block A - Nalanda (Engineering Wing)', 'BLK-A')`).run(fallbackBlockId, fallbackHostelId);
+      db.prepare(`INSERT OR IGNORE INTO floors (id, block_id, floor_number, name) VALUES (?, ?, 1, 'Ground Floor')`).run(fallbackFloorId, fallbackBlockId);
+      db.prepare(`INSERT OR IGNORE INTO rooms (id, floor_id, block_id, room_number, capacity, occupied_count) VALUES (?, ?, ?, 'A-101', 4, 0)`).run(fallbackRoomId, fallbackFloorId, fallbackBlockId);
+      selectedRoom = db.prepare('SELECT * FROM rooms WHERE id = ?').get(fallbackRoomId);
     }
 
     const userId = `usr-real-${Date.now()}-${Math.floor(Math.random() * 1000)}`;

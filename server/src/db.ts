@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
+import bcrypt from 'bcryptjs';
 
 const DB_DIR = path.resolve(process.cwd(), 'data');
 if (!fs.existsSync(DB_DIR)) {
@@ -239,5 +240,87 @@ export function initDatabase() {
   insertSetting.run('liveness_check_enabled', '1', 'Enforce anti-spoofing and liveness validation');
   insertSetting.run('demo_mode_active', '1', 'Indicates seeded realistic 1,200 student operational dataset');
 
-  console.log('Database initialized successfully with complete normalized schema.');
+  // Automatically guarantee campus architecture (Hostels, Blocks, Floors, 300 Rooms, Staff)
+  ensureCampusInfrastructure();
+
+  console.log('Database initialized successfully with complete normalized schema and room infrastructure.');
+}
+
+export function ensureCampusInfrastructure() {
+  const roomRow = db.prepare('SELECT count(*) as count FROM rooms').get() as any;
+  if (roomRow && roomRow.count > 0) {
+    return; // Rooms already provisioned
+  }
+
+  console.log('[Campus Init] Empty room architecture detected. Auto-provisioning hostel, blocks, floors and 300 rooms...');
+
+  const hostelId = 'hostel-tagore-main';
+  db.prepare(`
+    INSERT OR IGNORE INTO hostels (id, name, code, address, latitude, longitude, geofence_radius_meters)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    hostelId,
+    'Tagore Central Hostel Complex',
+    'TCHC-01',
+    'Campus North Wing, Knowledge Park, Academic City',
+    28.545000,
+    77.192600,
+    250
+  );
+
+  const blocksData = [
+    { id: 'block-a', name: 'Block A - Nalanda (Engineering Wing)', code: 'BLK-A', gender: 'Co-ed' },
+    { id: 'block-b', name: 'Block B - Takshashila (Sciences Wing)', code: 'BLK-B', gender: 'Co-ed' },
+    { id: 'block-c', name: 'Block C - Aryabhata (PG & Research Wing)', code: 'BLK-C', gender: 'Co-ed' }
+  ];
+
+  const insertBlock = db.prepare(`
+    INSERT OR IGNORE INTO blocks (id, hostel_id, name, code, gender, total_floors)
+    VALUES (?, ?, ?, ?, ?, 4)
+  `);
+
+  const insertFloor = db.prepare(`
+    INSERT OR IGNORE INTO floors (id, block_id, floor_number, name)
+    VALUES (?, ?, ?, ?)
+  `);
+
+  const insertRoom = db.prepare(`
+    INSERT OR IGNORE INTO rooms (id, floor_id, block_id, room_number, capacity, occupied_count, status)
+    VALUES (?, ?, ?, ?, 4, 0, 'Available')
+  `);
+
+  db.transaction(() => {
+    for (const b of blocksData) {
+      insertBlock.run(b.id, hostelId, b.name, b.code, b.gender);
+
+      for (let f = 1; f <= 4; f++) {
+        const floorId = `floor-${b.id}-${f}`;
+        const floorName = f === 1 ? 'Ground Floor' : `${f - 1}${f === 2 ? 'st' : f === 3 ? 'nd' : 'rd'} Floor`;
+        insertFloor.run(floorId, b.id, f, floorName);
+
+        for (let r = 1; r <= 25; r++) {
+          const roomNum = `${b.code.slice(-1)}-${f * 100 + r}`;
+          const roomId = `room-${b.id}-${f * 100 + r}`;
+          insertRoom.run(roomId, floorId, b.id, roomNum);
+        }
+      }
+    }
+
+    // Provision core staff credentials (admin / admin123, warden / warden123, guard / guard123)
+    const salt = bcrypt.genSaltSync(10);
+    const adminHash = bcrypt.hashSync('admin123', salt);
+    const wardenHash = bcrypt.hashSync('warden123', salt);
+    const guardHash = bcrypt.hashSync('guard123', salt);
+
+    const insertUser = db.prepare(`
+      INSERT OR IGNORE INTO users (id, username, email, password_hash, role, full_name, phone, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'Active')
+    `);
+
+    insertUser.run('usr-admin-01', 'admin', 'admin@hostelsafety.edu', adminHash, 'admin', 'Col. Sanjeev Deshmukh (Chief Administrator)', '+91 98110 22334');
+    insertUser.run('usr-warden-01', 'warden', 'warden@hostelsafety.edu', wardenHash, 'warden', 'Dr. Rajesh Verma (Chief Warden)', '+91 98220 44556');
+    insertUser.run('usr-guard-01', 'guard', 'security@hostelsafety.edu', guardHash, 'warden', 'Main Gate Security Desk', '+91 98330 11223');
+  })();
+
+  console.log('[Campus Init] 1 Hostel, 3 Blocks, 12 Floors, 300 Rooms, and Core Staff successfully auto-provisioned.');
 }

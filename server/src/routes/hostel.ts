@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { db } from '../db.js';
+import { db, ensureCampusInfrastructure } from '../db.js';
 import { AuthenticatedRequest, authenticateToken, requireRole } from '../middleware/auth.js';
 
 export const hostelRouter = Router();
@@ -9,7 +9,11 @@ hostelRouter.use(requireRole(['warden', 'admin']));
 
 // 1. Hierarchy Tree / Explorer: Hostel -> Blocks -> Floors -> Rooms
 hostelRouter.get('/hierarchy', (req: AuthenticatedRequest, res) => {
-  const hostels = db.prepare('SELECT * FROM hostels').all() as any[];
+  let hostels = db.prepare('SELECT * FROM hostels').all() as any[];
+  if (hostels.length === 0) {
+    ensureCampusInfrastructure();
+    hostels = db.prepare('SELECT * FROM hostels').all() as any[];
+  }
   const blocks = db.prepare('SELECT * FROM blocks').all() as any[];
   const floors = db.prepare('SELECT * FROM floors ORDER BY floor_number ASC').all() as any[];
   
