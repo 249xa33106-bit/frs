@@ -14,9 +14,13 @@ authRouter.post('/login', (req, res) => {
     return res.status(400).json({ error: 'Username/Email and password are required' });
   }
 
+  const cleanInput = username.trim();
   const user = db.prepare(`
-    SELECT * FROM users WHERE username = ? OR email = ?
-  `).get(username, username) as any;
+    SELECT u.* FROM users u
+    LEFT JOIN students s ON s.user_id = u.id
+    WHERE u.username = ? OR u.email = ? OR UPPER(s.roll_number) = ?
+    LIMIT 1
+  `).get(cleanInput, cleanInput.toLowerCase(), cleanInput.toUpperCase()) as any;
 
   if (!user) {
     return res.status(401).json({ error: 'Invalid username/email or password' });
