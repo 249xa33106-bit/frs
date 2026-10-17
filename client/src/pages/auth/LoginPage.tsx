@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ShieldCheck, LogIn, Lock, User, AlertCircle, ArrowRight, Shield, UserPlus } from 'lucide-react';
+import { ShieldCheck, LogIn, Lock, User, AlertCircle, Shield, UserPlus } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { ForgotPasswordModal } from './ForgotPasswordModal';
 import { StudentRegisterModal } from './StudentRegisterModal';
@@ -21,20 +21,6 @@ export const LoginPage: React.FC = () => {
       await login(username, password);
     } catch (err: any) {
       setError(err.message || 'Login failed. Please verify credentials.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const quickLogin = async (u: string, p: string) => {
-    setUsername(u);
-    setPassword(p);
-    setLoading(true);
-    setError(null);
-    try {
-      await login(u, p);
-    } catch (err: any) {
-      setError(err.message || 'Quick login failed');
     } finally {
       setLoading(false);
     }
@@ -120,83 +106,24 @@ export const LoginPage: React.FC = () => {
             </button>
           </form>
 
-          {/* Real Student Self-Registration Button */}
-          <div className="pt-1 text-center">
-            <button
-              type="button"
-              onClick={() => setShowRegisterModal(true)}
-              className="w-full py-2.5 px-3 bg-blue-50/60 hover:bg-blue-50 border border-blue-200 text-blue-700 font-semibold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-            >
-              <UserPlus className="w-4 h-4 text-blue-600" />
-              <span>New Resident? Register Real Student Account</span>
-            </button>
-          </div>
-
-          {/* Quick Demo Switcher Section */}
-          <div className="pt-4 border-t border-slate-100">
-            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider text-center mb-2.5">
-              One-Click Evaluator Demo Accounts
-            </p>
-            <div className="grid grid-cols-1 gap-1.5">
+          {/* Real Student Self-Registration & Account Access Guide */}
+          <div className="pt-3 border-t border-slate-100 space-y-3">
+            <div className="text-center">
+              <p className="text-xs text-slate-500 mb-2">New hostel resident without an account?</p>
               <button
                 type="button"
-                onClick={() => quickLogin('student', 'student123')}
-                className="w-full text-left p-2.5 rounded-xl bg-slate-50 hover:bg-blue-50 border border-slate-200 text-xs flex items-center justify-between transition-colors cursor-pointer"
+                onClick={() => setShowRegisterModal(true)}
+                className="w-full py-2.5 px-4 bg-blue-50/70 hover:bg-blue-100/70 border border-blue-200 text-blue-700 font-semibold rounded-xl text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
               >
-                <div>
-                  <span className="font-semibold text-slate-900 block">🎓 Priya Sharma (Student - In Hostel)</span>
-                  <span className="text-[10px] text-slate-500">Room A-204 • Standard inside resident</span>
-                </div>
-                <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
+                <UserPlus className="w-4 h-4 text-blue-600" />
+                <span>Register New Student Account</span>
               </button>
+            </div>
 
-              <button
-                type="button"
-                onClick={() => quickLogin('student_out', 'student123')}
-                className="w-full text-left p-2.5 rounded-xl bg-slate-50 hover:bg-amber-50 border border-slate-200 text-xs flex items-center justify-between transition-colors cursor-pointer"
-              >
-                <div>
-                  <span className="font-semibold text-slate-900 block">🎓 Rahul Mehta (Student - Outside)</span>
-                  <span className="text-[10px] text-slate-500">Room A-204 • Day outing to AIIMS</span>
-                </div>
-                <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
-              </button>
-
-              <button
-                type="button"
-                onClick={() => quickLogin('student_overdue', 'student123')}
-                className="w-full text-left p-2.5 rounded-xl bg-slate-50 hover:bg-rose-50 border border-slate-200 text-xs flex items-center justify-between transition-colors cursor-pointer"
-              >
-                <div>
-                  <span className="font-semibold text-slate-900 block">🎓 Rohan Gupta (Student - Overdue Return)</span>
-                  <span className="text-[10px] text-slate-500">Room A-205 • 2h overdue (triggers alerts)</span>
-                </div>
-                <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
-              </button>
-
-              <button
-                type="button"
-                onClick={() => quickLogin('warden', 'warden123')}
-                className="w-full text-left p-2.5 rounded-xl bg-slate-50 hover:bg-blue-50 border border-slate-200 text-xs flex items-center justify-between transition-colors cursor-pointer"
-              >
-                <div>
-                  <span className="font-semibold text-slate-900 block">🛡️ Dr. Rajesh Verma (Chief Warden)</span>
-                  <span className="text-[10px] text-slate-500">Operational dashboard, approvals & overdues</span>
-                </div>
-                <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
-              </button>
-
-              <button
-                type="button"
-                onClick={() => quickLogin('admin', 'admin123')}
-                className="w-full text-left p-2.5 rounded-xl bg-slate-50 hover:bg-purple-50 border border-slate-200 text-xs flex items-center justify-between transition-colors cursor-pointer"
-              >
-                <div>
-                  <span className="font-semibold text-slate-900 block">⚙️ Col. S. Deshmukh (Administrator)</span>
-                  <span className="text-[10px] text-slate-500">Full complex config, user roles & settings</span>
-                </div>
-                <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
-              </button>
+            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 text-[11px] text-slate-500 space-y-1">
+              <p className="font-semibold text-slate-700">Account Access Guide:</p>
+              <p>• <strong>Students:</strong> Sign in using your Roll Number or registered email.</p>
+              <p>• <strong>Staff & Wardens:</strong> Sign in with your assigned institutional username.</p>
             </div>
           </div>
         </div>

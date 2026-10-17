@@ -85,7 +85,7 @@ export const StudentManagementPage: React.FC = () => {
   };
 
   const handleClearDemoStudents = async () => {
-    if (!confirm('This will remove all 1,200 synthetic demo students, movements, and attendance logs, leaving a clean campus structure for your real students. Continue?')) {
+    if (!confirm('This will clear student records, movement history, and attendance logs, leaving a clean campus structure for new resident intake. Continue?')) {
       return;
     }
     setLoading(true);
@@ -94,7 +94,7 @@ export const StudentManagementPage: React.FC = () => {
       setMsg({ type: 'success', text: res.message });
       fetchData();
     } catch (err: any) {
-      setMsg({ type: 'error', text: err.message || 'Failed to clear demo data' });
+      setMsg({ type: 'error', text: err.message || 'Failed to clear student records' });
     } finally {
       setLoading(false);
     }
@@ -118,10 +118,10 @@ export const StudentManagementPage: React.FC = () => {
           <button
             onClick={handleClearDemoStudents}
             className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
-            title="Wipe 1,200 synthetic demo records to start fresh with real students"
+            title="Clear student database to start fresh with new residents"
           >
             <Trash2 className="w-4 h-4 text-rose-600" />
-            <span>Reset Demo Records</span>
+            <span>Reset Student Database</span>
           </button>
           <button
             onClick={() => setShowAddModal(true)}

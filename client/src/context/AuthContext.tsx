@@ -9,7 +9,6 @@ interface AuthContextType {
   loading: boolean;
   login: (username: string, password: string) => Promise<void>;
   logout: () => void;
-  switchRole: (role: UserRole, username?: string) => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
 
@@ -65,21 +64,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setStudent(null);
   };
 
-  const switchRole = async (role: UserRole, username?: string) => {
-    setLoading(true);
-    try {
-      const data = await api.post('/auth/switch-demo-role', { role, username });
-      localStorage.setItem('hostel_safety_token', data.token);
-      setToken(data.token);
-      setUser(data.user);
-      setStudent(data.student);
-    } catch (err: any) {
-      console.error('Role switch failed:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const refreshProfile = async () => {
     if (token) {
       await fetchProfile();
@@ -95,7 +79,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         loading,
         login,
         logout,
-        switchRole,
         refreshProfile
       }}
     >

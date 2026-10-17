@@ -137,61 +137,7 @@ authRouter.post('/forgot-password', (req, res) => {
   });
 });
 
-// Demo switch role helper (makes testing student / warden / admin roles instant)
-authRouter.post('/switch-demo-role', (req, res) => {
-  const { role, username } = req.body;
-  let targetUsername = username;
 
-  if (!targetUsername) {
-    if (role === 'admin') targetUsername = 'admin';
-    else if (role === 'warden') targetUsername = 'warden';
-    else if (role === 'student') targetUsername = 'student';
-    else targetUsername = 'student';
-  }
-
-  const user = db.prepare('SELECT * FROM users WHERE username = ?').get(targetUsername) as any;
-  if (!user) {
-    return res.status(404).json({ error: 'Demo user not found' });
-  }
-
-  let studentData: any = null;
-  if (user.role === 'student') {
-    studentData = db.prepare(`
-      SELECT s.*, b.name as block_name, f.name as floor_name, h.name as hostel_name
-      FROM students s
-      LEFT JOIN blocks b ON s.block_id = b.id
-      LEFT JOIN floors f ON s.floor_id = f.id
-      LEFT JOIN hostels h ON s.hostel_id = h.id
-      WHERE s.user_id = ?
-    `).get(user.id);
-  }
-
-  const tokenPayload = {
-    id: user.id,
-    username: user.username,
-    email: user.email,
-    role: user.role,
-    full_name: user.full_name,
-    student_id: studentData ? studentData.id : undefined
-  };
-
-  const token = generateToken(tokenPayload);
-
-  res.json({
-    message: `Switched to demo role: ${user.role} (${user.full_name})`,
-    token,
-    user: {
-      id: user.id,
-      username: user.username,
-      email: user.email,
-      role: user.role,
-      full_name: user.full_name,
-      phone: user.phone,
-      avatar_url: user.avatar_url
-    },
-    student: studentData
-  });
-});
 
 // Self-Registration for real students
 authRouter.post('/register-student', async (req, res) => {
