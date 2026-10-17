@@ -1,0 +1,243 @@
+import Database from 'better-sqlite3';
+import path from 'path';
+import fs from 'fs';
+
+const DB_DIR = path.resolve(process.cwd(), 'data');
+if (!fs.existsSync(DB_DIR)) {
+  fs.mkdirSync(DB_DIR, { recursive: true });
+}
+
+const DB_PATH = path.join(DB_DIR, 'hostel_safety.db');
+export const db = new Database(DB_PATH);
+
+// Enable foreign keys and WAL mode for high concurrency
+db.pragma('journal_mode = WAL');
+db.pragma('foreign_keys = ON');
+
+export function initDatabase() {
+  db.exec(`
+    -- Hostels
+    CREATE TABLE IF NOT EXISTS hostels (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      code TEXT NOT NULL UNIQUE,
+      address TEXT,
+      latitude REAL DEFAULT 28.5450,
+      longitude REAL DEFAULT 77.1926,
+      geofence_radius_meters INTEGER DEFAULT 200,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- Blocks
+    CREATE TABLE IF NOT EXISTS blocks (
+      id TEXT PRIMARY KEY,
+      hostel_id TEXT REFERENCES hostels(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      code TEXT NOT NULL,
+      gender TEXT DEFAULT 'Co-ed',
+      total_floors INTEGER DEFAULT 4,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- Floors
+    CREATE TABLE IF NOT EXISTS floors (
+      id TEXT PRIMARY KEY,
+      block_id TEXT REFERENCES blocks(id) ON DELETE CASCADE,
+      floor_number INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- Rooms
+    CREATE TABLE IF NOT EXISTS rooms (
+      id TEXT PRIMARY KEY,
+      floor_id TEXT REFERENCES floors(id) ON DELETE CASCADE,
+      block_id TEXT REFERENCES blocks(id) ON DELETE CASCADE,
+      room_number TEXT NOT NULL,
+      capacity INTEGER DEFAULT 4,
+      occupied_count INTEGER DEFAULT 0,
+      status TEXT DEFAULT 'Available',
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- Users
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      username TEXT UNIQUE NOT NULL,
+      email TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      role TEXT NOT NULL CHECK(role IN ('student', 'warden', 'admin')),
+      full_name TEXT NOT NULL,
+      phone TEXT,
+      avatar_url TEXT,
+      status TEXT DEFAULT 'Active',
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      last_login TEXT
+    );
+
+    -- Students
+    CREATE TABLE IF NOT EXISTS students (
+      id TEXT PRIMARY KEY,
+      user_id TEXT UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+      roll_number TEXT UNIQUE NOT NULL,
+      full_name TEXT NOT NULL,
+      email TEXT NOT NULL,
+      phone TEXT NOT NULL,
+      emergency_phone TEXT NOT NULL,
+      parent_name TEXT NOT NULL,
+      parent_phone TEXT NOT NULL,
+      hostel_id TEXT REFERENCES hostels(id),
+      block_id TEXT REFERENCES blocks(id),
+      floor_id TEXT REFERENCES floors(id),
+      room_id TEXT REFERENCES rooms(id),
+      room_number TEXT NOT NULL,
+      department TEXT NOT NULL,
+      year_of_study INTEGER NOT NULL,
+      current_status TEXT DEFAULT 'Inside' CHECK(current_status IN ('Inside', 'Outside', 'On Leave', 'Unknown')),
+      has_face_enrolled INTEGER DEFAULT 0,
+      face_descriptor TEXT,
+      face_enrolled_at TEXT,
+      attendance_exempt INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- Attendance Records
+    CREATE TABLE IF NOT EXISTS attendance_records (
+      id TEXT PRIMARY KEY,
+      student_id TEXT REFERENCES students(id) ON DELETE CASCADE,
+      date TEXT NOT NULL,
+      session_name TEXT DEFAULT 'Evening Curfew Check',
+      status TEXT NOT NULL CHECK(status IN ('Present', 'Absent', 'Verification Failed', 'Excused', 'Late')),
+      verification_method TEXT DEFAULT 'Face + Geolocation',
+      confidence_score REAL,
+      liveness_verified INTEGER DEFAULT 1,
+      location_verified INTEGER DEFAULT 1,
+      latitude REAL,
+      longitude REAL,
+      distance_from_hostel_meters REAL,
+      verification_signals TEXT,
+      failure_reason TEXT,
+      timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
+      verified_by_user_id TEXT
+    );
+
+    -- Leave Requests
+    CREATE TABLE IF NOT EXISTS leave_requests (
+      id TEXT PRIMARY KEY,
+      student_id TEXT REFERENCES students(id) ON DELETE CASCADE,
+      leave_type TEXT NOT NULL CHECK(leave_type IN ('Outing', 'Night Out', 'Home Leave', 'Emergency/Medical', 'Academic Visit')),
+      reason TEXT NOT NULL,
+      destination TEXT NOT NULL,
+      departure_date TEXT NOT NULL,
+      expected_return_date TEXT NOT NULL,
+      status TEXT DEFAULT 'Pending' CHECK(status IN ('Pending', 'Approved', 'Rejected', 'Cancelled', 'Expired')),
+      parent_informed INTEGER DEFAULT 1,
+      parent_consent_phone TEXT,
+      warden_remarks TEXT,
+      reviewed_by_user_id TEXT REFERENCES users(id),
+      reviewed_at TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- Movement Records
+    CREATE TABLE IF NOT EXISTS movement_records (
+      id TEXT PRIMARY KEY,
+      student_id TEXT REFERENCES students(id) ON DELETE CASCADE,
+      leave_request_id TEXT REFERENCES leave_requests(id) ON DELETE SET NULL,
+      movement_type TEXT NOT NULL,
+      status TEXT DEFAULT 'Outside' CHECK(status IN ('Outside', 'Returned', 'Overdue')),
+      actual_departure_time TEXT NOT NULL,
+      expected_return_time TEXT NOT NULL,
+      actual_return_time TEXT,
+      departure_gate TEXT DEFAULT 'Main Campus Gate A',
+      return_gate TEXT,
+      return_verification_method TEXT,
+      return_location_lat REAL,
+      return_location_lng REAL,
+      return_notes TEXT,
+      is_overdue INTEGER DEFAULT 0,
+      overdue_minutes INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- Exception Alerts
+    CREATE TABLE IF NOT EXISTS exception_alerts (
+      id TEXT PRIMARY KEY,
+      student_id TEXT REFERENCES students(id) ON DELETE CASCADE,
+      type TEXT NOT NULL,
+      severity TEXT NOT NULL CHECK(severity IN ('Critical', 'High', 'Medium', 'Low')),
+      status TEXT DEFAULT 'Open' CHECK(status IN ('Open', 'Acknowledged', 'Resolved', 'Dismissed')),
+      title TEXT NOT NULL,
+      description TEXT NOT NULL,
+      resolution_notes TEXT,
+      resolved_by_user_id TEXT REFERENCES users(id),
+      resolved_at TEXT,
+      acknowledged_at TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- Notifications
+    CREATE TABLE IF NOT EXISTS notifications (
+      id TEXT PRIMARY KEY,
+      user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+      student_id TEXT REFERENCES students(id) ON DELETE CASCADE,
+      title TEXT NOT NULL,
+      message TEXT NOT NULL,
+      type TEXT NOT NULL,
+      is_read INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- Audit Logs
+    CREATE TABLE IF NOT EXISTS audit_logs (
+      id TEXT PRIMARY KEY,
+      user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+      action TEXT NOT NULL,
+      target_type TEXT NOT NULL,
+      target_id TEXT,
+      details TEXT,
+      ip_address TEXT,
+      timestamp TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- System Settings
+    CREATE TABLE IF NOT EXISTS system_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      description TEXT,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- Indexes for performance
+    CREATE INDEX IF NOT EXISTS idx_students_roll ON students(roll_number);
+    CREATE INDEX IF NOT EXISTS idx_students_status ON students(current_status);
+    CREATE INDEX IF NOT EXISTS idx_students_room ON students(room_id);
+    CREATE INDEX IF NOT EXISTS idx_attendance_date ON attendance_records(date);
+    CREATE INDEX IF NOT EXISTS idx_attendance_student ON attendance_records(student_id);
+    CREATE INDEX IF NOT EXISTS idx_leave_student ON leave_requests(student_id);
+    CREATE INDEX IF NOT EXISTS idx_leave_status ON leave_requests(status);
+    CREATE INDEX IF NOT EXISTS idx_movement_student ON movement_records(student_id);
+    CREATE INDEX IF NOT EXISTS idx_movement_status ON movement_records(status);
+    CREATE INDEX IF NOT EXISTS idx_exceptions_status ON exception_alerts(status);
+    CREATE INDEX IF NOT EXISTS idx_exceptions_student ON exception_alerts(student_id);
+    CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id);
+  `);
+
+  // Initialize default system settings if missing
+  const insertSetting = db.prepare(`
+    INSERT OR IGNORE INTO system_settings (key, value, description)
+    VALUES (?, ?, ?)
+  `);
+
+  insertSetting.run('hostel_name', 'Tagore Central Hostel Complex', 'Full name of the hostel premises');
+  insertSetting.run('hostel_lat', '28.545000', 'Hostel Campus Central Latitude');
+  insertSetting.run('hostel_lng', '77.192600', 'Hostel Campus Central Longitude');
+  insertSetting.run('geofence_radius_meters', '250', 'Acceptable radius in meters for on-campus verification');
+  insertSetting.run('attendance_curfew_time', '21:30', 'Daily attendance cutoff time (24h format HH:MM)');
+  insertSetting.run('overdue_grace_minutes', '15', 'Grace minutes before an overdue exception is generated');
+  insertSetting.run('face_match_threshold', '0.70', 'Minimum cosine similarity score required for face match');
+  insertSetting.run('liveness_check_enabled', '1', 'Enforce anti-spoofing and liveness validation');
+  insertSetting.run('demo_mode_active', '1', 'Indicates seeded realistic 1,200 student operational dataset');
+
+  console.log('Database initialized successfully with complete normalized schema.');
+}

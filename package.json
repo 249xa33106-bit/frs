@@ -1,0 +1,26 @@
+{
+  "name": "hostel-safety-system",
+  "version": "1.0.0",
+  "description": "Hostel Safety — Hostel Attendance & Student Movement Management System",
+  "scripts": {
+    "dev": "concurrently -k -n \"backend,client,face-engine\" -c \"blue,green,magenta\" \"npm run dev:server\" \"npm run dev:client\" \"npm run dev:face\"",
+    "dev:server": "cd server && npx tsx src/index.ts",
+    "dev:client": "cd client && npm run dev",
+    "dev:face": "cd face-service && python -m uvicorn app:app --host 127.0.0.1 --port 8005",
+    "build": "npm --prefix client install && npm --prefix client run build && npm --prefix server install",
+    "seed": "cd server && npx tsx src/seed.ts",
+    "start": "cd server && npx tsx src/index.ts"
+  },
+  "keywords": [
+    "hostel-safety",
+    "attendance",
+    "face-recognition",
+    "geofencing",
+    "movement-tracking"
+  ],
+  "author": "Antigravity Engineering",
+  "license": "ISC",
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

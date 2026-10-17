@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  # 1. Fullstack Application (Frontend + Express API)
+  app:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    container_name: hostel_safety_app
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      - NODE_ENV=production
+      - PORT=5000
+      - FASTAPI_FACE_URL=http://face-service:8005
+      - DATABASE_URL=postgresql://neondb_owner:npg_eZlcz7ykiS0j@ep-jolly-union-b521wogh-pooler.c-7.us-east-2.aws.neon.tech/neondb?sslmode=require
+      - DATABASE_TYPE=postgres
+      - JWT_SECRET=hostel-safety-secret-key-super-secure-2026
+    depends_on:
+      - face-service
+
+  # 2. Python Face Recognition Microservice (FastAPI + OpenCV)
+  face-service:
+    build:
+      context: ./face-service
+      dockerfile: Dockerfile
+    container_name: hostel_safety_face
+    restart: unless-stopped
+    ports:
+      - "8005:8005"
+    environment:
+      - PORT=8005

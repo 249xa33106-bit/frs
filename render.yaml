@@ -1,0 +1,38 @@
+services:
+  # 1. Fullstack Frontend & API Server
+  - type: web
+    name: hostel-safety-app
+    runtime: node
+    plan: standard
+    buildCommand: npm --prefix client install && npm --prefix client run build && npm --prefix server install
+    startCommand: cd server && npx tsx src/index.ts
+    healthCheckPath: /api/system/status
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: DATABASE_URL
+        value: postgresql://neondb_owner:npg_eZlcz7ykiS0j@ep-jolly-union-b521wogh-pooler.c-7.us-east-2.aws.neon.tech/neondb?sslmode=require
+      - key: DATABASE_TYPE
+        value: postgres
+      - key: JWT_SECRET
+        generateValue: true
+      - key: FASTAPI_FACE_URL
+        fromService:
+          type: web
+          name: hostel-safety-face
+          property: host
+
+  # 2. Python FastAPI OpenCV Biometric Microservice
+  - type: web
+    name: hostel-safety-face
+    runtime: python
+    plan: standard
+    rootDir: face-service
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
