@@ -1,7 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { X, UserPlus, CheckCircle2, AlertCircle, Loader2, ShieldCheck, Camera } from 'lucide-react';
+import React, { useState } from 'react';
+import { X, UserPlus, AlertCircle, Loader2, ShieldCheck } from 'lucide-react';
 import { api } from '../../services/api';
-import { useAuth } from '../../context/AuthContext';
 
 interface StudentRegisterModalProps {
   isOpen: boolean;
@@ -9,8 +8,6 @@ interface StudentRegisterModalProps {
 }
 
 export const StudentRegisterModal: React.FC<StudentRegisterModalProps> = ({ isOpen, onClose }) => {
-  const { login } = useAuth();
-  const [rooms, setRooms] = useState<any[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -25,22 +22,8 @@ export const StudentRegisterModal: React.FC<StudentRegisterModalProps> = ({ isOp
     parent_name: '',
     parent_phone: '',
     department: 'Computer Science & Engineering',
-    year_of_study: 1,
-    room_id: ''
+    year_of_study: 1
   });
-
-  useEffect(() => {
-    if (isOpen) {
-      api.get('/hostel/hierarchy')
-        .then((res) => {
-          if (res.rooms?.length > 0) {
-            setRooms(res.rooms);
-            setForm((prev) => ({ ...prev, room_id: res.rooms[0].id }));
-          }
-        })
-        .catch(() => {});
-    }
-  }, [isOpen]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -212,18 +195,14 @@ export const StudentRegisterModal: React.FC<StudentRegisterModalProps> = ({ isOp
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Hostel Room Assignment *</label>
-              <select
-                value={form.room_id}
-                onChange={(e) => setForm({ ...form, room_id: e.target.value })}
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Parent / Guardian Name</label>
+              <input
+                type="text"
+                placeholder="e.g. Ramesh Sharma"
+                value={form.parent_name}
+                onChange={(e) => setForm({ ...form, parent_name: e.target.value })}
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
-              >
-                {rooms.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    Room {r.room_number} ({r.block_name || 'Tagore Complex'} • {r.occupied_count}/{r.capacity} occ)
-                  </option>
-                ))}
-              </select>
+              />
             </div>
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">Parent / Guardian Contact</label>
@@ -240,7 +219,7 @@ export const StudentRegisterModal: React.FC<StudentRegisterModalProps> = ({ isOp
           <div className="pt-2 text-[11px] text-slate-500 bg-blue-50/50 p-3 rounded-xl border border-blue-100 flex items-start gap-2">
             <ShieldCheck className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
             <span>
-              Once registered, you can immediately log in and enroll your real live face template from your Student Dashboard using your camera.
+              Hostel room allocation is managed automatically by the administration. Once registered, log in to enroll your facial biometric template from your Student Dashboard.
             </span>
           </div>
 
