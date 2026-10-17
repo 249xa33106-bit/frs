@@ -8,13 +8,29 @@ interface FaceVerificationResult {
   message: string;
 }
 
-const FASTAPI_URL = process.env.FASTAPI_FACE_URL || 'http://127.0.0.1:8005';
+export function getFastApiUrl(): string {
+  let url = process.env.FASTAPI_FACE_URL || 'http://127.0.0.1:8005';
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    url = `http://${url}`;
+  }
+  try {
+    const parsed = new URL(url);
+    if (!parsed.port && parsed.hostname !== 'localhost' && parsed.hostname !== '127.0.0.1' && !parsed.hostname.includes('.')) {
+      parsed.port = '10000';
+      url = parsed.toString().replace(/\/+$/, '');
+    }
+  } catch {
+    // Keep original
+  }
+  return url.replace(/\/+$/, '');
+}
 
 export async function checkFastAPIFaceService(): Promise<{ available: boolean; info?: any }> {
   try {
+    const apiUrl = getFastApiUrl();
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 1500);
-    const res = await fetch(`${FASTAPI_URL}/health`, { signal: controller.signal });
+    const res = await fetch(`${apiUrl}/health`, { signal: controller.signal });
     clearTimeout(timeoutId);
 
     if (res.ok) {
@@ -27,6 +43,43 @@ export async function checkFastAPIFaceService(): Promise<{ available: boolean; i
   return { available: false };
 }
 
+export async function detectFaceBiometrics(imageBase64: string): Promise<{
+  success: boolean;
+  detected: boolean;
+  descriptor?: number[];
+  message?: string;
+}> {
+  try {
+    const apiUrl = getFastApiUrl();
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 4000);
+    const res = await fetch(`${apiUrl}/api/face/detect`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image_base64: imageBase64 }),
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+
+    if (res.ok) {
+      const data = (await res.json()) as any;
+      return {
+        success: Boolean(data.success),
+        detected: Boolean(data.detected),
+        descriptor: data.descriptor,
+        message: data.message
+      };
+    }
+  } catch (err: any) {
+    console.warn('Face detection service unreachable:', err.message);
+  }
+  return {
+    success: false,
+    detected: false,
+    message: 'Biometric microservice unreachable'
+  };
+}
+
 export async function verifyFaceBiometrics(
   imageBase64: string,
   targetDescriptor: number[] | null,
@@ -37,7 +90,7 @@ export async function verifyFaceBiometrics(
 
   if (health.available) {
     try {
-      const response = await fetch(`${FASTAPI_URL}/api/face/verify`, {
+      const response = await fetch(`${getFastApiUrl()}/api/face/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { db } from '../db.js';
 import { AuthenticatedRequest, authenticateToken, requireRole } from '../middleware/auth.js';
 import { calculateDistanceMeters } from '../utils/geo.js';
-import { verifyFaceBiometrics } from '../utils/faceClient.js';
+import { verifyFaceBiometrics, detectFaceBiometrics } from '../utils/faceClient.js';
 
 export const studentRouter = Router();
 
@@ -486,30 +486,16 @@ studentRouter.post('/enroll-face', async (req: AuthenticatedRequest, res) => {
 
     if (!finalDescriptor && imageBase64) {
       // Call OpenCV FastAPI to detect face and compute 32-bin vector
-      const detectRes = await fetch(`${process.env.FASTAPI_FACE_URL || 'http://127.0.0.1:8005'}/api/face/detect`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image_base64: imageBase64 })
-      });
-
-      if (!detectRes.ok) {
-        return res.status(400).json({
-          success: false,
-          error: 'Face Detection Failed',
-          message: 'Unable to communicate with biometric microservice.'
-        });
-      }
-
-      const detectData = await detectRes.json() as any;
-      if (!detectData.detected || !detectData.descriptor) {
+      const detectResult = await detectFaceBiometrics(imageBase64);
+      if (!detectResult.success || !detectResult.detected || !detectResult.descriptor) {
         return res.status(422).json({
           success: false,
           error: 'No Face Recognized',
-          message: detectData.message || 'No clear face detected in the camera frame. Please center your face in the oval guide.'
+          message: detectResult.message || 'No clear face detected in the camera frame. Please center your face in the oval guide.'
         });
       }
 
-      finalDescriptor = detectData.descriptor;
+      finalDescriptor = detectResult.descriptor;
     }
 
     if (!finalDescriptor || !Array.isArray(finalDescriptor) || finalDescriptor.length === 0) {

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { db } from '../db.js';
 import { generateToken, authenticateToken, AuthenticatedRequest } from '../middleware/auth.js';
+import { detectFaceBiometrics } from '../utils/faceClient.js';
 
 export const authRouter = Router();
 
@@ -249,17 +250,10 @@ authRouter.post('/register-student', async (req, res) => {
     let hasFaceEnrolled = 0;
     if (imageBase64 && imageBase64.length > 500) {
       try {
-        const detectRes = await fetch(`${process.env.FASTAPI_FACE_URL || 'http://127.0.0.1:8005'}/api/face/detect`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ image_base64: imageBase64 })
-        });
-        if (detectRes.ok) {
-          const detectData = await detectRes.json() as any;
-          if (detectData.detected && detectData.descriptor) {
-            faceDescriptorStr = JSON.stringify(detectData.descriptor);
-            hasFaceEnrolled = 1;
-          }
+        const detectResult = await detectFaceBiometrics(imageBase64);
+        if (detectResult.detected && detectResult.descriptor) {
+          faceDescriptorStr = JSON.stringify(detectResult.descriptor);
+          hasFaceEnrolled = 1;
         }
       } catch (e) {
         console.warn('Face detection service not available during registration:', e);

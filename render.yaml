@@ -3,9 +3,8 @@ services:
   - type: web
     name: hostel-safety-app
     runtime: node
-    plan: standard
-    buildCommand: npm --prefix client install && npm --prefix client run build && npm --prefix server install
-    startCommand: cd server && npx tsx src/index.ts
+    buildCommand: npm run build
+    startCommand: npm start
     healthCheckPath: /api/system/status
     envVars:
       - key: NODE_ENV
@@ -28,7 +27,6 @@ services:
   - type: web
     name: hostel-safety-face
     runtime: python
-    plan: standard
     rootDir: face-service
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
