@@ -1,23 +1,62 @@
-import React, { useRef, useState, useEffect } from 'react';
-import { Camera, CheckCircle2, AlertOctagon, RefreshCw, MapPin, ShieldCheck, Eye, Sparkles } from 'lucide-react';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
+import { Camera, CheckCircle2, AlertOctagon, RefreshCw, MapPin, ShieldCheck, Eye, Sparkles, Navigation, AlertTriangle, ShieldAlert } from 'lucide-react';
 import { api } from '../../services/api';
+
+// Great-circle Haversine distance calculator in meters
+function calculateDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371e3; // Earth's radius in meters
+  const phi1 = (lat1 * Math.PI) / 180;
+  const phi2 = (lat2 * Math.PI) / 180;
+  const deltaPhi = ((lat2 - lat1) * Math.PI) / 180;
+  const deltaLambda = ((lon2 - lon1) * Math.PI) / 180;
+
+  const a =
+    Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
+    Math.cos(phi1) * Math.cos(phi2) * Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  return Math.round(R * c);
+}
 
 interface CameraCaptureProps {
   onSuccess: (result: any) => void;
   onError?: (error: string) => void;
+  hostelLat?: number;
+  hostelLng?: number;
+  geofenceRadius?: number;
 }
 
-export const CameraCapture: React.FC<CameraCaptureProps> = ({ onSuccess, onError }) => {
+export const CameraCapture: React.FC<CameraCaptureProps> = ({
+  onSuccess,
+  onError,
+  hostelLat: propLat,
+  hostelLng: propLng,
+  geofenceRadius: propRadius
+}) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [cameraPermission, setCameraPermission] = useState<'pending' | 'granted' | 'denied'>('pending');
+
+  const [hostelGeofence, setHostelGeofence] = useState<{
+    lat: number;
+    lng: number;
+    radius: number;
+    hostelName: string;
+  }>({
+    lat: propLat || 28.5450,
+    lng: propLng || 77.1926,
+    radius: propRadius || 250,
+    hostelName: 'Hostel Campus'
+  });
+
   const [locationState, setLocationState] = useState<{
     lat: number | null;
     lng: number | null;
     accuracy: number | null;
     status: 'fetching' | 'available' | 'denied';
+    errorMessage?: string;
   }>({
     lat: null,
     lng: null,
@@ -35,6 +74,72 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({ onSuccess, onError
     type: null,
     message: ''
   });
+
+  // Fetch authoritative hostel geofence coordinates from dashboard
+  const fetchHostelCoordinates = async () => {
+    try {
+      const res = await api.get('/student/dashboard');
+      if (res?.settings) {
+        setHostelGeofence({
+          lat: Number(res.settings.hostelLat || 28.5450),
+          lng: Number(res.settings.hostelLng || 77.1926),
+          radius: Number(res.settings.geofenceRadius || 250),
+          hostelName: res.student?.hostel_name || 'Tagore Central Hostel Complex'
+        });
+      }
+    } catch (e) {
+      // Keep defaults
+    }
+  };
+
+  // Request high-accuracy GPS Location
+  const requestLocation = useCallback(() => {
+    setLocationState((prev) => ({ ...prev, status: 'fetching', errorMessage: undefined }));
+
+    if (!('geolocation' in navigator)) {
+      setLocationState({
+        lat: null,
+        lng: null,
+        accuracy: null,
+        status: 'denied',
+        errorMessage: 'Geolocation is not supported by your browser.'
+      });
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLocationState({
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          accuracy: Math.round(pos.coords.accuracy),
+          status: 'available'
+        });
+      },
+      (err) => {
+        console.warn('Geolocation error:', err.message);
+        // Fallback only if on localhost development without SSL
+        const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        if (isLocal) {
+          setLocationState({
+            lat: 28.5451,
+            lng: 77.1925,
+            accuracy: 15,
+            status: 'available'
+          });
+        } else {
+          setLocationState({
+            lat: null,
+            lng: null,
+            accuracy: null,
+            status: 'denied',
+            errorMessage: err.message || 'Location permission denied or unavailable.'
+          });
+        }
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+  }, []);
 
   // Start Camera
   const startCamera = async () => {
@@ -75,34 +180,9 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({ onSuccess, onError
     }
   };
 
-  // Request Location
   useEffect(() => {
-    if ('geolocation' in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          setLocationState({
-            lat: pos.coords.latitude,
-            lng: pos.coords.longitude,
-            accuracy: pos.coords.accuracy,
-            status: 'available'
-          });
-        },
-        (err) => {
-          console.warn('Geolocation unavailable:', err.message);
-          // Fallback to campus coordinate for demonstration when running in non-SSL localhost
-          setLocationState({
-            lat: 28.5451,
-            lng: 77.1925,
-            accuracy: 15,
-            status: 'available'
-          });
-        },
-        { enableHighAccuracy: true, timeout: 6000 }
-      );
-    } else {
-      setLocationState({ lat: 28.5451, lng: 77.1925, accuracy: 20, status: 'available' });
-    }
-
+    fetchHostelCoordinates();
+    requestLocation();
     startCamera();
 
     return () => {
@@ -112,8 +192,34 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({ onSuccess, onError
     };
   }, []);
 
+  // Compute live distance & geofence status
+  const currentDistance =
+    locationState.lat !== null && locationState.lng !== null
+      ? calculateDistanceMeters(locationState.lat, locationState.lng, hostelGeofence.lat, hostelGeofence.lng)
+      : null;
+
+  const isInsideGeofence = currentDistance !== null ? currentDistance <= hostelGeofence.radius : false;
+  const isOutsideGeofence = currentDistance !== null ? currentDistance > hostelGeofence.radius : false;
+
   // Handle Capture and Submit Attendance
   const captureAndVerify = async () => {
+    // Strict geofence enforcement before capture
+    if (isOutsideGeofence) {
+      setFeedback({
+        type: 'error',
+        message: `Strict Geofence Enforced: You are outside the hostel perimeter (${currentDistance}m away, allowed zone: ${hostelGeofence.radius}m). Face ID capture is only permitted inside the hostel.`
+      });
+      return;
+    }
+
+    if (locationState.status !== 'available') {
+      setFeedback({
+        type: 'error',
+        message: 'Active GPS location is required to verify you are inside the hostel premises. Please enable location.'
+      });
+      return;
+    }
+
     if (!videoRef.current || !canvasRef.current) return;
     setIsVerifying(true);
     setFeedback({ type: null, message: '' });
@@ -121,21 +227,19 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({ onSuccess, onError
     try {
       const video = videoRef.current;
       const canvas = canvasRef.current;
-      
-      // Scale frame to optimal 640x480 for real-time OpenCV Haar Cascade processing
+
       const maxWidth = 640;
       const maxHeight = 480;
       const rawW = video.videoWidth || 640;
       const rawH = video.videoHeight || 480;
       const scale = Math.min(maxWidth / rawW, maxHeight / rawH, 1.0);
-      
+
       canvas.width = Math.round(rawW * scale);
       canvas.height = Math.round(rawH * scale);
 
       const ctx = canvas.getContext('2d');
       if (!ctx) throw new Error('Failed to get canvas 2d context');
 
-      // Draw mirrored video frame
       ctx.translate(canvas.width, 0);
       ctx.scale(-1, 1);
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
@@ -176,25 +280,94 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({ onSuccess, onError
   };
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 shadow-xs max-w-xl mx-auto">
+    <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 shadow-xs max-w-xl mx-auto space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
         <div>
           <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
             <Camera className="w-5 h-5 text-blue-600" />
-            Face Recognition & Location Verification
+            Hostel Face ID Verification
           </h3>
-          <p className="text-xs text-slate-500">Live camera capture with active campus geofencing check</p>
+          <p className="text-xs text-slate-500">Live camera capture strictly restricted to hostel campus grounds</p>
         </div>
 
-        {/* Location Signal Pill */}
-        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs bg-slate-100 border border-slate-200">
-          <MapPin className="w-3.5 h-3.5 text-blue-600" />
-          <span className="text-[11px] font-medium text-slate-700">
-            {locationState.status === 'available' ? 'GPS Active' : 'Locating...'}
-          </span>
+        {/* Location Signal Pill & Refresh Button */}
+        <div className="flex items-center gap-1.5 self-start sm:self-auto">
+          <div
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${
+              isInsideGeofence
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                : isOutsideGeofence
+                ? 'bg-rose-50 border-rose-200 text-rose-800'
+                : locationState.status === 'fetching'
+                ? 'bg-blue-50 border-blue-200 text-blue-700'
+                : 'bg-amber-50 border-amber-200 text-amber-800'
+            }`}
+          >
+            <MapPin className="w-3.5 h-3.5 shrink-0" />
+            <span>
+              {isInsideGeofence
+                ? `Inside Hostel (${currentDistance}m)`
+                : isOutsideGeofence
+                ? `Outside Hostel (${currentDistance}m)`
+                : locationState.status === 'fetching'
+                ? 'Locating GPS...'
+                : 'GPS Disabled'}
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={requestLocation}
+            className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+            title="Refresh GPS Coordinates"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${locationState.status === 'fetching' ? 'animate-spin text-blue-600' : ''}`} />
+          </button>
         </div>
       </div>
+
+      {/* Geofence Alert Banners */}
+      {isOutsideGeofence && (
+        <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-rose-900 text-xs flex items-start gap-2.5 animate-in fade-in">
+          <AlertOctagon className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+          <div className="space-y-0.5">
+            <p className="font-bold text-rose-950 text-xs sm:text-sm">
+              Strict Geofence Enforced: Outside Hostel Grounds ({currentDistance}m away)
+            </p>
+            <p className="text-rose-800 text-[11px] leading-relaxed">
+              Attendance Face ID capture is strictly authorized only when physically inside the hostel perimeter (Within {hostelGeofence.radius}m). Face ID capture is currently locked.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {locationState.status === 'denied' && (
+        <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-xs flex items-start gap-2.5 animate-in fade-in">
+          <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <p className="font-bold text-amber-950">GPS Location Access Required</p>
+            <p className="text-amber-800 text-[11px]">
+              You must allow device GPS location permissions in your browser to verify that you are within hostel boundaries before capturing your face.
+            </p>
+            <button
+              onClick={requestLocation}
+              className="mt-1 px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white font-semibold rounded-lg text-[11px] cursor-pointer"
+            >
+              Enable & Retry Location
+            </button>
+          </div>
+        </div>
+      )}
+
+      {isInsideGeofence && (
+        <div className="p-2.5 bg-emerald-50/80 border border-emerald-200 rounded-xl text-emerald-900 text-xs flex items-center gap-2 animate-in fade-in">
+          <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+          <span className="font-semibold text-[11px]">
+            ✓ Physical Geofence Verified: You are inside hostel premises ({currentDistance}m from center). Face ID verification unlocked.
+          </span>
+        </div>
+      )}
 
       {/* Video Viewport Container */}
       <div className="relative rounded-2xl overflow-hidden bg-slate-900 aspect-4/3 flex items-center justify-center border-2 border-slate-200 shadow-inner">
@@ -226,7 +399,9 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({ onSuccess, onError
             <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center">
               <div
                 className={`w-48 sm:w-56 h-64 sm:h-72 rounded-[50%] border-2 border-dashed transition-all duration-300 flex items-center justify-center ${
-                  livenessStage === 'ready'
+                  isOutsideGeofence
+                    ? 'border-rose-400/80 shadow-[0_0_15px_rgba(244,63,94,0.3)]'
+                    : livenessStage === 'ready'
                     ? 'border-emerald-400 shadow-[0_0_20px_rgba(52,211,153,0.3)]'
                     : 'border-blue-400/80 shadow-[0_0_15px_rgba(59,130,246,0.3)]'
                 }`}
@@ -237,19 +412,22 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({ onSuccess, onError
 
               {/* Liveness Guidance Pill */}
               <div className="mt-3 px-3.5 py-1.5 rounded-full bg-slate-900/80 backdrop-blur-xs border border-white/20 text-white text-xs font-medium flex items-center gap-2">
-                {livenessStage === 'align' && (
+                {isOutsideGeofence ? (
+                  <>
+                    <ShieldAlert className="w-3.5 h-3.5 text-rose-400 animate-pulse" />
+                    <span className="text-rose-200">Outside Hostel Geofence — Capture Locked</span>
+                  </>
+                ) : livenessStage === 'align' ? (
                   <>
                     <Eye className="w-3.5 h-3.5 text-blue-400 animate-pulse" />
                     <span>Center your face within the oval</span>
                   </>
-                )}
-                {livenessStage === 'blink' && (
+                ) : livenessStage === 'blink' ? (
                   <>
                     <Sparkles className="w-3.5 h-3.5 text-amber-400 animate-spin" />
                     <span>Liveness check: Natural blink or slight nod</span>
                   </>
-                )}
-                {livenessStage === 'ready' && (
+                ) : (
                   <>
                     <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
                     <span>Position verified — Ready to submit</span>
@@ -264,18 +442,44 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({ onSuccess, onError
         <canvas ref={canvasRef} className="hidden" />
       </div>
 
-      {/* Action Button */}
-      <div className="mt-4 flex flex-col sm:flex-row gap-3">
+      {/* Action Button & Reset */}
+      <div className="flex flex-col sm:flex-row gap-3">
         <button
           onClick={captureAndVerify}
-          disabled={isVerifying || cameraPermission !== 'granted'}
-          className={`flex-1 py-3 px-4 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer ${
-            isVerifying
+          disabled={
+            isOutsideGeofence ||
+            locationState.status !== 'available' ||
+            isVerifying ||
+            cameraPermission !== 'granted'
+          }
+          className={`flex-1 py-3.5 px-4 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-xs transition-all cursor-pointer ${
+            isOutsideGeofence
+              ? 'bg-rose-100 text-rose-700 border border-rose-300 cursor-not-allowed opacity-90'
+              : locationState.status === 'denied'
+              ? 'bg-amber-100 text-amber-800 border border-amber-300 cursor-not-allowed opacity-90'
+              : locationState.status === 'fetching'
+              ? 'bg-slate-100 text-slate-500 border border-slate-200 cursor-wait'
+              : isVerifying
               ? 'bg-slate-200 text-slate-500 cursor-not-allowed'
               : 'bg-blue-600 hover:bg-blue-700 text-white active:scale-[0.99]'
           }`}
         >
-          {isVerifying ? (
+          {isOutsideGeofence ? (
+            <>
+              <AlertOctagon className="w-4 h-4 text-rose-600" />
+              <span>Outside Hostel ({currentDistance}m) — Capture Blocked</span>
+            </>
+          ) : locationState.status === 'denied' ? (
+            <>
+              <MapPin className="w-4 h-4 text-amber-700" />
+              <span>GPS Location Required to Capture Face ID</span>
+            </>
+          ) : locationState.status === 'fetching' ? (
+            <>
+              <RefreshCw className="w-4 h-4 animate-spin text-slate-500" />
+              <span>Verifying Hostel Geofence Location...</span>
+            </>
+          ) : isVerifying ? (
             <>
               <RefreshCw className="w-4 h-4 animate-spin" />
               <span>Analyzing Biometrics & Location...</span>
@@ -295,14 +499,14 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({ onSuccess, onError
           title="Restart Camera"
         >
           <RefreshCw className="w-4 h-4" />
-          <span>Reset</span>
+          <span>Reset Camera</span>
         </button>
       </div>
 
       {/* Outcome / Feedback Banner */}
       {feedback.type && (
         <div
-          className={`mt-4 p-4 rounded-xl border text-xs leading-relaxed animate-in fade-in duration-200 ${
+          className={`p-4 rounded-xl border text-xs leading-relaxed animate-in fade-in duration-200 ${
             feedback.type === 'success'
               ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
               : 'bg-rose-50 border-rose-200 text-rose-900'

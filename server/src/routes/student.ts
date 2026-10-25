@@ -146,12 +146,12 @@ studentRouter.post('/attendance', async (req: AuthenticatedRequest, res) => {
       distanceMeters = calculateDistanceMeters(Number(latitude), Number(longitude), hostelLat, hostelLng);
       if (distanceMeters > maxRadius) {
         locationVerified = 0;
-        locationError = `Location outside hostel perimeter: ${distanceMeters}m from campus center (Allowed radius: ${maxRadius}m).`;
+        locationError = `Outside Hostel Geofence: Attendance capture is strictly restricted to hostel grounds. You are currently ${distanceMeters}m away from the campus perimeter (Allowed zone: ${maxRadius}m).`;
       }
     } else {
       // If location unavailable in browser, record as unverified location
       locationVerified = 0;
-      locationError = 'GPS location coordinates unavailable. Please enable browser location permissions.';
+      locationError = 'GPS location coordinates unavailable. High-accuracy device GPS is strictly required to verify presence inside the hostel.';
     }
 
     // Parse enrolled biometric template
@@ -169,9 +169,9 @@ studentRouter.post('/attendance', async (req: AuthenticatedRequest, res) => {
 
     const verificationSuccess = faceResult.matched && (locationVerified === 1);
     const status = verificationSuccess ? 'Present' : 'Verification Failed';
-    const failureReason = !faceResult.matched
-      ? faceResult.message
-      : (locationError || 'Verification conditions not met');
+    const failureReason = locationVerified === 0
+      ? locationError
+      : (!faceResult.matched ? faceResult.message : 'Verification conditions not met');
 
     const recordId = `att-${Date.now()}-${student.id}`;
 
@@ -245,8 +245,8 @@ studentRouter.post('/attendance', async (req: AuthenticatedRequest, res) => {
 
       return res.status(422).json({
         success: false,
-        status: 'Verification Failed',
-        error: 'Verification Failed',
+        status: locationVerified === 0 ? 'Geofence Violation' : 'Verification Failed',
+        error: locationVerified === 0 ? 'Geofence Violation' : 'Verification Failed',
         message: failureReason,
         diagnostics: {
           faceConfidence: `${Math.round(faceResult.confidence * 100)}%`,

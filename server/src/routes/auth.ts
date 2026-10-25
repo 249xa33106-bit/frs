@@ -108,36 +108,179 @@ authRouter.get('/me', authenticateToken, (req: AuthenticatedRequest, res) => {
   });
 });
 
-// Forgot password
-authRouter.post('/forgot-password', (req, res) => {
-  const { email } = req.body;
-  if (!email) {
-    return res.status(400).json({ error: 'Email address is required' });
+// In-memory cache for Phone OTP Password Reset (Valid for 10 minutes)
+interface OtpRecord {
+  otp: string;
+  expiresAt: number;
+  userId: string;
+  identifier: string;
+  phone: string;
+}
+const passwordResetOtpMap = new Map<string, OtpRecord>();
+
+// 1. Request Phone OTP for Password Reset
+authRouter.post('/forgot-password-otp', (req, res) => {
+  const { identifier } = req.body;
+  if (!identifier || typeof identifier !== 'string' || !identifier.trim()) {
+    return res.status(400).json({ error: 'Please enter your registered mobile number, roll number, or academic email.' });
   }
 
-  const user = db.prepare('SELECT id, full_name FROM users WHERE email = ?').get(email) as any;
+  const clean = identifier.trim();
+  const cleanPhone = clean.replace(/[^0-9]/g, '');
+
+  // Look up user by phone number, student phone, roll number, username, or email
+  const user = db.prepare(`
+    SELECT u.id, u.username, u.email, u.full_name, u.phone, s.phone as student_phone, s.roll_number
+    FROM users u
+    LEFT JOIN students s ON u.id = s.user_id
+    WHERE u.phone = ? 
+       OR s.phone = ?
+       OR (LENGTH(?) >= 10 AND (REPLACE(u.phone, ' ', '') LIKE '%' || ? OR REPLACE(s.phone, ' ', '') LIKE '%' || ?))
+       OR UPPER(u.username) = UPPER(?)
+       OR UPPER(s.roll_number) = UPPER(?)
+       OR LOWER(u.email) = LOWER(?)
+    LIMIT 1
+  `).get(clean, clean, cleanPhone, cleanPhone.slice(-10), cleanPhone.slice(-10), clean, clean, clean) as any;
+
   if (!user) {
-    // For privacy, don't disclose whether email exists
-    return res.json({
-      success: true,
-      message: 'If an account exists with this email, reset instructions have been sent to your administrator.'
+    return res.status(404).json({
+      error: 'Account not found. No registered student or staff account matches this phone number, roll number, or email.'
     });
   }
 
-  // Log in audit logs
+  const registeredPhone = user.phone || user.student_phone || clean;
+  // Generate a random 6-digit OTP
+  const otp = Math.floor(100000 + Math.random() * 900000).toString();
+  const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes
+
+  // Store in cache indexed by user.id and clean input
+  const record: OtpRecord = {
+    otp,
+    expiresAt,
+    userId: user.id,
+    identifier: clean,
+    phone: registeredPhone
+  };
+  passwordResetOtpMap.set(user.id, record);
+  passwordResetOtpMap.set(clean.toLowerCase(), record);
+  if (cleanPhone.length >= 10) {
+    passwordResetOtpMap.set(cleanPhone.slice(-10), record);
+  }
+
+  // Audit log
   db.prepare(`
     INSERT INTO audit_logs (id, user_id, action, target_type, target_id, details)
-    VALUES (?, ?, 'PASSWORD_RESET_REQUEST', 'users', ?, ?)
+    VALUES (?, ?, 'PASSWORD_RESET_OTP_REQUESTED', 'users', ?, ?)
   `).run(
-    `aud-pwd-${Date.now()}`,
+    `aud-otp-${Date.now()}`,
     user.id,
     user.id,
-    `Password reset requested for ${email}`
+    `Password reset OTP dispatched to registered phone: ${registeredPhone}`
+  );
+
+  // Mask phone for user privacy (e.g., +91 98•••• 3210)
+  const phoneDigits = registeredPhone.replace(/[^0-9]/g, '');
+  const maskedPhone = phoneDigits.length >= 10
+    ? `+91 ${phoneDigits.slice(-10, -7)}••••${phoneDigits.slice(-3)}`
+    : registeredPhone;
+
+  res.json({
+    success: true,
+    message: `OTP sent successfully to your registered mobile (${maskedPhone}).`,
+    phone: maskedPhone,
+    otp, // Returned for instant testing and displayed simulated SMS banner in student UI
+    userId: user.id,
+    expiresInMinutes: 10
+  });
+});
+
+// 2. Verify OTP & Reset Password
+authRouter.post('/reset-password-otp', (req, res) => {
+  const { identifier, userId, otp, newPassword } = req.body;
+
+  if (!otp || typeof otp !== 'string' || otp.trim().length !== 6) {
+    return res.status(400).json({ error: 'Please enter the 6-digit OTP sent to your registered phone.' });
+  }
+
+  if (!newPassword || typeof newPassword !== 'string' || newPassword.length < 6) {
+    return res.status(400).json({ error: 'New password must be at least 6 characters long.' });
+  }
+
+  // Look up OTP record
+  let record: OtpRecord | undefined;
+  if (userId && passwordResetOtpMap.has(userId)) {
+    record = passwordResetOtpMap.get(userId);
+  } else if (identifier && passwordResetOtpMap.has(identifier.trim().toLowerCase())) {
+    record = passwordResetOtpMap.get(identifier.trim().toLowerCase());
+  } else if (identifier) {
+    const cleanPhone = identifier.replace(/[^0-9]/g, '');
+    if (cleanPhone.length >= 10 && passwordResetOtpMap.has(cleanPhone.slice(-10))) {
+      record = passwordResetOtpMap.get(cleanPhone.slice(-10));
+    }
+  }
+
+  if (!record) {
+    return res.status(400).json({ error: 'No active OTP request found. Please request a new OTP.' });
+  }
+
+  if (Date.now() > record.expiresAt) {
+    passwordResetOtpMap.delete(record.userId);
+    return res.status(400).json({ error: 'OTP has expired (10-minute limit exceeded). Please request a new OTP.' });
+  }
+
+  if (record.otp !== otp.trim()) {
+    return res.status(400).json({ error: 'Incorrect OTP code. Please enter the valid 6-digit OTP.' });
+  }
+
+  // Update password in database
+  const salt = bcrypt.genSaltSync(10);
+  const passwordHash = bcrypt.hashSync(newPassword, salt);
+
+  db.prepare(`
+    UPDATE users
+    SET password_hash = ?
+    WHERE id = ?
+  `).run(passwordHash, record.userId);
+
+  // Clean up OTP cache
+  passwordResetOtpMap.delete(record.userId);
+  passwordResetOtpMap.delete(record.identifier.toLowerCase());
+
+  // Audit log
+  db.prepare(`
+    INSERT INTO audit_logs (id, user_id, action, target_type, target_id, details)
+    VALUES (?, ?, 'PASSWORD_RESET_SUCCESS', 'users', ?, ?)
+  `).run(
+    `aud-pwd-ok-${Date.now()}`,
+    record.userId,
+    record.userId,
+    `Password successfully reset via Phone OTP for user ID: ${record.userId}`
   );
 
   res.json({
     success: true,
-    message: 'Password reset link and OTP has been dispatched to your registered email and warden office.'
+    message: 'Password has been reset successfully! You can now log in with your new password.'
+  });
+});
+
+// Legacy / fallback endpoint for email reset
+authRouter.post('/forgot-password', (req, res) => {
+  const { email } = req.body;
+  if (!email) {
+    return res.status(400).json({ error: 'Email address or mobile phone is required' });
+  }
+
+  const user = db.prepare('SELECT id, full_name, phone FROM users WHERE email = ? OR phone = ?').get(email, email) as any;
+  if (!user) {
+    return res.json({
+      success: true,
+      message: 'If an account exists with this credential, reset instructions and OTP have been dispatched.'
+    });
+  }
+
+  res.json({
+    success: true,
+    message: 'Password reset OTP has been dispatched to your registered phone number.'
   });
 });
 

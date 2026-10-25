@@ -18,6 +18,33 @@ export const SystemSettingsPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [gpsDetecting, setGpsDetecting] = useState(false);
+  const [gpsDetectMsg, setGpsDetectMsg] = useState<string | null>(null);
+
+  const handleDetectCurrentLocation = () => {
+    if (!('geolocation' in navigator)) {
+      alert('Geolocation is not supported by your browser.');
+      return;
+    }
+    setGpsDetecting(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setSettings((prev) => ({
+          ...prev,
+          hostel_lat: pos.coords.latitude.toFixed(6),
+          hostel_lng: pos.coords.longitude.toFixed(6)
+        }));
+        setGpsDetecting(false);
+        setGpsDetectMsg(`Location acquired: (${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)}). Click 'Save Settings' to apply as campus center.`);
+        setTimeout(() => setGpsDetectMsg(null), 8000);
+      },
+      (err) => {
+        alert(`Could not fetch location: ${err.message}`);
+        setGpsDetecting(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
 
   // Real Database Management State
   const [dbUrl, setDbUrl] = useState('');
@@ -355,13 +382,31 @@ export const SystemSettingsPage: React.FC = () => {
 
         {/* Section 1: Geofencing & Campus Coordinates */}
         <div className="space-y-4">
-          <div className="border-b border-slate-100 pb-2">
-            <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
-              <MapPin className="w-4 h-4 text-blue-600" />
-              Campus Geofencing Parameters
-            </h3>
-            <p className="text-xs text-slate-500">Defines the legitimate physical perimeter for student roll call</p>
+          <div className="border-b border-slate-100 pb-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                <MapPin className="w-4 h-4 text-blue-600" />
+                Campus Geofencing Parameters
+              </h3>
+              <p className="text-xs text-slate-500">Defines the legitimate physical perimeter for student roll call</p>
+            </div>
+            <button
+              type="button"
+              onClick={handleDetectCurrentLocation}
+              disabled={gpsDetecting}
+              className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 font-semibold rounded-xl text-xs flex items-center gap-1.5 transition-colors cursor-pointer self-start sm:self-auto"
+            >
+              <MapPin className="w-3.5 h-3.5 text-blue-600" />
+              <span>{gpsDetecting ? 'Detecting Location...' : '📍 Use My Current Location as Hostel GPS'}</span>
+            </button>
           </div>
+
+          {gpsDetectMsg && (
+            <div className="p-3 bg-blue-50 border border-blue-200 text-blue-800 rounded-xl text-xs flex items-center gap-2 animate-in fade-in">
+              <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0" />
+              <span>{gpsDetectMsg}</span>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
             <div>
