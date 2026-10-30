@@ -382,22 +382,13 @@ authRouter.post('/register-student', async (req, res) => {
     const studentId = `std-real-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     const passwordHash = bcrypt.hashSync(password, 10);
 
-    // Create user
-    db.prepare(`
-      INSERT INTO users (id, username, email, password_hash, role, full_name, phone, status, created_at)
-      VALUES (?, ?, ?, ?, 'student', ?, ?, 'Active', datetime('now'))
-    `).run(userId, cleanRoll, email.trim().toLowerCase(), passwordHash, full_name.trim(), phone.trim());
-
-    safePgQuery(`
-      INSERT INTO users (id, username, email, password_hash, role, full_name, phone, status, created_at)
-      VALUES ($1, $2, $3, $4, 'student', $5, $6, 'Active', NOW())
-      ON CONFLICT (id) DO NOTHING
-    `, [userId, cleanRoll, email.trim().toLowerCase(), passwordHash, full_name.trim(), phone.trim()]);
-
-    // Optional Face Enrollment from imageBase64 if submitted during registration
+    // Optional photo and face enrollment from imageBase64
+    let photoUrl: string | null = null;
     let faceDescriptorStr: string | null = null;
     let hasFaceEnrolled = 0;
-    if (imageBase64 && imageBase64.length > 500) {
+
+    if (imageBase64 && imageBase64.length > 50) {
+      photoUrl = imageBase64.startsWith('data:') ? imageBase64 : `data:image/jpeg;base64,${imageBase64}`;
       try {
         const detectResult = await detectFaceBiometrics(imageBase64);
         if (detectResult.detected && detectResult.descriptor) {
@@ -409,18 +400,30 @@ authRouter.post('/register-student', async (req, res) => {
       }
     }
 
-    // Create student
+    // Create user with avatar_url
+    db.prepare(`
+      INSERT INTO users (id, username, email, password_hash, role, full_name, phone, avatar_url, status, created_at)
+      VALUES (?, ?, ?, ?, 'student', ?, ?, ?, 'Active', datetime('now'))
+    `).run(userId, cleanRoll, email.trim().toLowerCase(), passwordHash, full_name.trim(), phone.trim(), photoUrl);
+
+    safePgQuery(`
+      INSERT INTO users (id, username, email, password_hash, role, full_name, phone, avatar_url, status, created_at)
+      VALUES ($1, $2, $3, $4, 'student', $5, $6, $7, 'Active', NOW())
+      ON CONFLICT (id) DO UPDATE SET avatar_url = COALESCE(EXCLUDED.avatar_url, users.avatar_url)
+    `, [userId, cleanRoll, email.trim().toLowerCase(), passwordHash, full_name.trim(), phone.trim(), photoUrl]);
+
+    // Create student with photo_url
     db.prepare(`
       INSERT INTO students (
         id, user_id, roll_number, full_name, email, phone, emergency_phone,
         parent_name, parent_phone, hostel_id, block_id, floor_id, room_id,
         room_number, department, year_of_study, current_status, has_face_enrolled,
-        face_descriptor, face_enrolled_at, created_at
+        face_descriptor, face_enrolled_at, photo_url, created_at
       ) VALUES (
         ?, ?, ?, ?, ?, ?, ?,
         ?, ?, 'hostel-tagore-main', ?, ?, ?,
         ?, ?, ?, 'Inside', ?,
-        ?, ${hasFaceEnrolled ? "datetime('now')" : "NULL"}, datetime('now')
+        ?, ${hasFaceEnrolled ? "datetime('now')" : "NULL"}, ?, datetime('now')
       )
     `).run(
       studentId,
@@ -439,7 +442,8 @@ authRouter.post('/register-student', async (req, res) => {
       department || 'Computer Science & Engineering',
       Number(year_of_study) || 1,
       hasFaceEnrolled,
-      faceDescriptorStr
+      faceDescriptorStr,
+      photoUrl
     );
 
     safePgQuery(`
@@ -447,14 +451,17 @@ authRouter.post('/register-student', async (req, res) => {
         id, user_id, roll_number, full_name, email, phone, emergency_phone,
         parent_name, parent_phone, hostel_id, block_id, floor_id, room_id,
         room_number, department, year_of_study, current_status, has_face_enrolled,
-        face_descriptor, created_at
+        face_descriptor, photo_url, created_at
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7,
         $8, $9, 'hostel-tagore-main', $10, $11, $12,
         $13, $14, $15, 'Inside', $16,
-        $17, NOW()
+        $17, $18, NOW()
       )
-      ON CONFLICT (id) DO NOTHING
+      ON CONFLICT (id) DO UPDATE SET
+        photo_url = COALESCE(EXCLUDED.photo_url, students.photo_url),
+        face_descriptor = COALESCE(EXCLUDED.face_descriptor, students.face_descriptor),
+        has_face_enrolled = EXCLUDED.has_face_enrolled
     `, [
       studentId,
       userId,
@@ -472,7 +479,8 @@ authRouter.post('/register-student', async (req, res) => {
       department || 'Computer Science & Engineering',
       Number(year_of_study) || 1,
       hasFaceEnrolled,
-      faceDescriptorStr
+      faceDescriptorStr,
+      photoUrl
     ]);
 
     // Update room occupancy

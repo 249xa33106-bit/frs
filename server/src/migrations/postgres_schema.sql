@@ -84,6 +84,7 @@ CREATE TABLE IF NOT EXISTS students (
     has_face_enrolled INTEGER DEFAULT 0,
     face_descriptor TEXT,
     face_enrolled_at TIMESTAMPTZ,
+    photo_url TEXT,
     attendance_exempt INTEGER DEFAULT 0,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );

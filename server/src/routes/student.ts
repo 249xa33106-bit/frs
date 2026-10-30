@@ -510,14 +510,32 @@ studentRouter.post('/enroll-face', async (req: AuthenticatedRequest, res) => {
     }
 
     const descriptorStr = JSON.stringify(finalDescriptor);
+    const photoUrl = imageBase64 ? (imageBase64.startsWith('data:') ? imageBase64 : `data:image/jpeg;base64,${imageBase64}`) : null;
 
     db.prepare(`
       UPDATE students
       SET face_descriptor = ?,
           has_face_enrolled = 1,
-          face_enrolled_at = datetime('now')
+          face_enrolled_at = datetime('now'),
+          photo_url = COALESCE(?, photo_url)
       WHERE id = ?
-    `).run(descriptorStr, student.id);
+    `).run(descriptorStr, photoUrl, student.id);
+
+    if (photoUrl) {
+      db.prepare(`UPDATE users SET avatar_url = ? WHERE id = ?`).run(photoUrl, req.user!.id);
+      safePgQuery(`UPDATE users SET avatar_url = $1 WHERE id = $2`, [photoUrl, req.user!.id]);
+      safePgQuery(`
+        UPDATE students
+        SET face_descriptor = $1, has_face_enrolled = 1, face_enrolled_at = NOW(), photo_url = COALESCE($2, photo_url)
+        WHERE id = $3
+      `, [descriptorStr, photoUrl, student.id]);
+    } else {
+      safePgQuery(`
+        UPDATE students
+        SET face_descriptor = $1, has_face_enrolled = 1, face_enrolled_at = NOW()
+        WHERE id = $2
+      `, [descriptorStr, student.id]);
+    }
 
     db.prepare(`
       INSERT INTO audit_logs (id, user_id, action, target_type, target_id, details)

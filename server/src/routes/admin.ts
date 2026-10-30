@@ -136,8 +136,12 @@ adminRouter.post('/students', (req: AuthenticatedRequest, res) => {
     parent_phone,
     room_id,
     department,
-    year_of_study
+    year_of_study,
+    imageBase64,
+    photo_url
   } = req.body;
+
+  const photoUrl = photo_url || imageBase64 || null;
 
   if (!roll_number || !full_name || !email || !phone || !room_id) {
     return res.status(400).json({ error: 'Roll number, name, email, phone and room assignment are required' });
@@ -159,26 +163,28 @@ adminRouter.post('/students', (req: AuthenticatedRequest, res) => {
 
   // Create user
   db.prepare(`
-    INSERT INTO users (id, username, email, password_hash, role, full_name, phone, status)
-    VALUES (?, ?, ?, ?, 'student', ?, ?, 'Active')
-  `).run(userId, roll_number.toLowerCase(), email, defaultPasswordHash, full_name, phone);
+    INSERT INTO users (id, username, email, password_hash, role, full_name, phone, status, avatar_url)
+    VALUES (?, ?, ?, ?, 'student', ?, ?, 'Active', ?)
+  `).run(userId, roll_number.toLowerCase(), email, defaultPasswordHash, full_name, phone, photoUrl);
 
   safePgQuery(`
-    INSERT INTO users (id, username, email, password_hash, role, full_name, phone, status, created_at)
-    VALUES ($1, $2, $3, $4, 'student', $5, $6, 'Active', NOW())
-    ON CONFLICT (id) DO UPDATE SET password_hash = EXCLUDED.password_hash, full_name = EXCLUDED.full_name
-  `, [userId, roll_number.toLowerCase(), email, defaultPasswordHash, full_name, phone]);
+    INSERT INTO users (id, username, email, password_hash, role, full_name, phone, status, avatar_url, created_at)
+    VALUES ($1, $2, $3, $4, 'student', $5, $6, 'Active', $7, NOW())
+    ON CONFLICT (id) DO UPDATE SET password_hash = EXCLUDED.password_hash, full_name = EXCLUDED.full_name, avatar_url = COALESCE(EXCLUDED.avatar_url, users.avatar_url)
+  `, [userId, roll_number.toLowerCase(), email, defaultPasswordHash, full_name, phone, photoUrl]);
 
   // Create student
   db.prepare(`
     INSERT INTO students (
       id, user_id, roll_number, full_name, email, phone, emergency_phone,
       parent_name, parent_phone, hostel_id, block_id, floor_id, room_id,
-      room_number, department, year_of_study, current_status, has_face_enrolled
+      room_number, department, year_of_study, current_status, has_face_enrolled,
+      photo_url
     ) VALUES (
       ?, ?, ?, ?, ?, ?, ?,
       ?, ?, 'hostel-tagore-main', ?, ?, ?,
-      ?, ?, ?, 'Inside', 0
+      ?, ?, ?, 'Inside', 0,
+      ?
     )
   `).run(
     studentId,
@@ -195,7 +201,8 @@ adminRouter.post('/students', (req: AuthenticatedRequest, res) => {
     room.id,
     room.room_number,
     department || 'Engineering',
-    year_of_study || 1
+    year_of_study || 1,
+    photoUrl
   );
 
   safePgQuery(`
@@ -203,14 +210,14 @@ adminRouter.post('/students', (req: AuthenticatedRequest, res) => {
       id, user_id, roll_number, full_name, email, phone, emergency_phone,
       parent_name, parent_phone, hostel_id, block_id, floor_id, room_id,
       room_number, department, year_of_study, current_status, has_face_enrolled,
-      created_at
+      photo_url, created_at
     ) VALUES (
       $1, $2, $3, $4, $5, $6, $7,
       $8, $9, 'hostel-tagore-main', $10, $11, $12,
       $13, $14, $15, 'Inside', 0,
-      NOW()
+      $16, NOW()
     )
-    ON CONFLICT (id) DO NOTHING
+    ON CONFLICT (id) DO UPDATE SET photo_url = COALESCE(EXCLUDED.photo_url, students.photo_url)
   `, [
     studentId,
     userId,
@@ -226,7 +233,8 @@ adminRouter.post('/students', (req: AuthenticatedRequest, res) => {
     room.id,
     room.room_number,
     department || 'Engineering',
-    year_of_study || 1
+    year_of_study || 1,
+    photoUrl
   ]);
 
   // Update room count
@@ -280,14 +288,42 @@ adminRouter.post('/students/:id/face-enroll', async (req: AuthenticatedRequest, 
     }
 
     const descriptorStr = typeof finalDescriptor === 'string' ? finalDescriptor : JSON.stringify(finalDescriptor);
+    const photoUrl = imageBase64 ? (imageBase64.startsWith('data:') ? imageBase64 : `data:image/jpeg;base64,${imageBase64}`) : null;
 
     db.prepare(`
       UPDATE students
       SET face_descriptor = ?,
           has_face_enrolled = 1,
-          face_enrolled_at = datetime('now')
+          face_enrolled_at = datetime('now'),
+          photo_url = COALESCE(?, photo_url)
       WHERE id = ?
-    `).run(descriptorStr, studentId);
+    `).run(descriptorStr, photoUrl, studentId);
+
+    if (photoUrl) {
+      db.prepare(`
+        UPDATE users
+        SET avatar_url = ?
+        WHERE id = (SELECT user_id FROM students WHERE id = ?)
+      `).run(photoUrl, studentId);
+
+      safePgQuery(`
+        UPDATE users
+        SET avatar_url = $1
+        WHERE id = (SELECT user_id FROM students WHERE id = $2)
+      `, [photoUrl, studentId]);
+
+      safePgQuery(`
+        UPDATE students
+        SET face_descriptor = $1, has_face_enrolled = 1, face_enrolled_at = NOW(), photo_url = COALESCE($2, photo_url)
+        WHERE id = $3
+      `, [descriptorStr, photoUrl, studentId]);
+    } else {
+      safePgQuery(`
+        UPDATE students
+        SET face_descriptor = $1, has_face_enrolled = 1, face_enrolled_at = NOW()
+        WHERE id = $2
+      `, [descriptorStr, studentId]);
+    }
 
     db.prepare(`
       INSERT INTO audit_logs (id, user_id, action, target_type, target_id, details)

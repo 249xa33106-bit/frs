@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { X, UserPlus, AlertCircle, Loader2, ShieldCheck, Eye, EyeOff } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { X, UserPlus, AlertCircle, Loader2, ShieldCheck, Eye, EyeOff, Camera, Upload, Trash2 } from 'lucide-react';
 import { api } from '../../services/api';
 
 interface StudentRegisterModalProps {
@@ -12,6 +12,8 @@ export const StudentRegisterModal: React.FC<StudentRegisterModalProps> = ({ isOp
   const [error, setError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [form, setForm] = useState({
     roll_number: '',
@@ -25,8 +27,56 @@ export const StudentRegisterModal: React.FC<StudentRegisterModalProps> = ({ isOp
     parent_phone: '',
     block_id: 'block-a',
     department: 'Computer Science & Engineering',
-    year_of_study: 1
+    year_of_study: 1,
+    imageBase64: ''
   });
+
+  const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setError('Please select a valid image file (JPG or PNG).');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const maxDim = 480;
+        let w = img.width;
+        let h = img.height;
+        if (w > maxDim || h > maxDim) {
+          if (w > h) {
+            h = Math.round((h * maxDim) / w);
+            w = maxDim;
+          } else {
+            w = Math.round((w * maxDim) / h);
+            h = maxDim;
+          }
+        }
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, w, h);
+          const compressed = canvas.toDataURL('image/jpeg', 0.85);
+          setPhotoPreview(compressed);
+          setForm((prev) => ({ ...prev, imageBase64: compressed }));
+        }
+      };
+      img.src = event.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemovePhoto = () => {
+    setPhotoPreview(null);
+    setForm((prev) => ({ ...prev, imageBase64: '' }));
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -90,6 +140,57 @@ export const StudentRegisterModal: React.FC<StudentRegisterModalProps> = ({ isOp
               <span>{error}</span>
             </div>
           )}
+
+          {/* Student Photo Attachment */}
+          <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              {photoPreview ? (
+                <div className="relative">
+                  <img
+                    src={photoPreview}
+                    alt="Preview"
+                    className="w-12 h-12 rounded-xl object-cover border-2 border-blue-500 shadow-xs"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleRemovePhoto}
+                    className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-rose-600 hover:bg-rose-700 text-white rounded-full flex items-center justify-center cursor-pointer shadow-xs"
+                    title="Remove Photo"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              ) : (
+                <div className="w-12 h-12 rounded-xl bg-blue-100/70 text-blue-700 flex items-center justify-center shrink-0 border border-blue-200/80">
+                  <Camera className="w-6 h-6" />
+                </div>
+              )}
+              <div>
+                <span className="text-xs font-semibold text-slate-800 block">Student Photo & Biometrics</span>
+                <span className="text-[11px] text-slate-500 block">
+                  {photoPreview ? 'Photo attached and ready' : 'Attach your face photo for instant biometric profile'}
+                </span>
+              </div>
+            </div>
+            <div className="shrink-0">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                capture="user"
+                onChange={handlePhotoSelect}
+                className="hidden"
+                id="student-photo-upload"
+              />
+              <label
+                htmlFor="student-photo-upload"
+                className="px-3 py-1.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-semibold rounded-lg shadow-2xs transition-colors flex items-center gap-1.5 cursor-pointer"
+              >
+                <Upload className="w-3.5 h-3.5 text-blue-600" />
+                <span>{photoPreview ? 'Change' : 'Upload Photo'}</span>
+              </label>
+            </div>
+          </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
             <div>

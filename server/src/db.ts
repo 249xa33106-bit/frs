@@ -99,6 +99,7 @@ export function initDatabase() {
       has_face_enrolled INTEGER DEFAULT 0,
       face_descriptor TEXT,
       face_enrolled_at TEXT,
+      photo_url TEXT,
       attendance_exempt INTEGER DEFAULT 0,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
@@ -224,6 +225,10 @@ export function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_exceptions_student ON exception_alerts(student_id);
     CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id);
   `);
+
+  try {
+    db.exec(`ALTER TABLE students ADD COLUMN photo_url TEXT;`);
+  } catch (e) {}
 
   // Initialize default system settings if missing
   const insertSetting = db.prepare(`

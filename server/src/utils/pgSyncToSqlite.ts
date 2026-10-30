@@ -20,6 +20,12 @@ export async function syncPostgresToSqlite(): Promise<void> {
     client = await pgPool.connect();
     console.log('[PG→SQLite] Connected to Neon PostgreSQL. Restoring registered students...');
 
+    // ── 0. Ensure schema compatibility (photo_url, avatar_url) ─────────────────
+    try {
+      await client.query('ALTER TABLE students ADD COLUMN IF NOT EXISTS photo_url TEXT');
+      await client.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT');
+    } catch (e) {}
+
     // ── 1. Sync real users (non-admin/warden created via registration) ──────────
     const { rows: pgUsers } = await client.query(`
       SELECT id, username, email, password_hash, role, full_name, phone, avatar_url, status, created_at
@@ -28,8 +34,15 @@ export async function syncPostgresToSqlite(): Promise<void> {
     `);
 
     const insertUser = sqliteDb.prepare(`
-      INSERT OR IGNORE INTO users (id, username, email, password_hash, role, full_name, phone, avatar_url, status)
+      INSERT INTO users (id, username, email, password_hash, role, full_name, phone, avatar_url, status)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        username = excluded.username,
+        email = excluded.email,
+        full_name = excluded.full_name,
+        phone = excluded.phone,
+        avatar_url = COALESCE(excluded.avatar_url, users.avatar_url),
+        status = excluded.status
     `);
 
     for (const u of pgUsers) {
@@ -42,24 +55,35 @@ export async function syncPostgresToSqlite(): Promise<void> {
       SELECT id, user_id, roll_number, full_name, email, phone, emergency_phone,
              parent_name, parent_phone, hostel_id, block_id, floor_id, room_id,
              room_number, department, year_of_study, current_status, has_face_enrolled,
-             face_descriptor, face_enrolled_at, attendance_exempt, created_at
+             face_descriptor, face_enrolled_at, attendance_exempt, photo_url, created_at
       FROM students
       WHERE id LIKE 'std-real-%'
       ORDER BY created_at ASC
     `);
 
     const insertStudent = sqliteDb.prepare(`
-      INSERT OR IGNORE INTO students (
+      INSERT INTO students (
         id, user_id, roll_number, full_name, email, phone, emergency_phone,
         parent_name, parent_phone, hostel_id, block_id, floor_id, room_id,
         room_number, department, year_of_study, current_status, has_face_enrolled,
-        face_descriptor, face_enrolled_at, attendance_exempt, created_at
+        face_descriptor, face_enrolled_at, attendance_exempt, photo_url, created_at
       ) VALUES (
         ?, ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?, ?,
-        ?, ?, ?, ?
+        ?, ?, ?, ?, ?
       )
+      ON CONFLICT(id) DO UPDATE SET
+        roll_number = excluded.roll_number,
+        full_name = excluded.full_name,
+        email = excluded.email,
+        phone = excluded.phone,
+        room_number = excluded.room_number,
+        block_id = excluded.block_id,
+        has_face_enrolled = excluded.has_face_enrolled,
+        face_descriptor = COALESCE(excluded.face_descriptor, students.face_descriptor),
+        face_enrolled_at = COALESCE(excluded.face_enrolled_at, students.face_enrolled_at),
+        photo_url = COALESCE(excluded.photo_url, students.photo_url)
     `);
 
     for (const s of pgStudents) {
@@ -85,6 +109,7 @@ export async function syncPostgresToSqlite(): Promise<void> {
         s.face_descriptor ? String(s.face_descriptor) : null,
         s.face_enrolled_at ? (s.face_enrolled_at instanceof Date ? s.face_enrolled_at.toISOString() : String(s.face_enrolled_at)) : null,
         s.attendance_exempt ? 1 : 0,
+        s.photo_url ? String(s.photo_url) : null,
         s.created_at ? (s.created_at instanceof Date ? s.created_at.toISOString() : String(s.created_at)) : new Date().toISOString()
       );
     }

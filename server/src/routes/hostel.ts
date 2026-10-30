@@ -54,6 +54,7 @@ hostelRouter.get('/rooms/:id', (req: AuthenticatedRequest, res) => {
   // Fetch all students residing in this room
   const students = db.prepare(`
     SELECT s.*,
+           COALESCE(s.photo_url, (SELECT avatar_url FROM users u WHERE u.id = s.user_id)) as photo_url,
            (SELECT status FROM attendance_records a WHERE a.student_id = s.id AND a.date = date('now') ORDER BY timestamp DESC LIMIT 1) as today_attendance
     FROM students s
     WHERE s.room_id = ?
@@ -77,7 +78,9 @@ hostelRouter.get('/students', (req: AuthenticatedRequest, res) => {
   } = req.query as any;
 
   let query = `
-    SELECT s.*, b.name as block_name, f.name as floor_name,
+    SELECT s.*,
+           COALESCE(s.photo_url, (SELECT avatar_url FROM users u WHERE u.id = s.user_id)) as photo_url,
+           b.name as block_name, f.name as floor_name,
            (SELECT status FROM attendance_records a WHERE a.student_id = s.id AND a.date = date('now') ORDER BY timestamp DESC LIMIT 1) as today_attendance,
            (SELECT count(*) FROM exception_alerts e WHERE e.student_id = s.id AND e.status IN ('Open', 'Acknowledged')) as open_exceptions_count
     FROM students s

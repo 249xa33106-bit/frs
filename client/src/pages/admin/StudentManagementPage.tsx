@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { UserCheck, UserPlus, Search, CheckCircle2, AlertCircle, Camera, RefreshCw, Trash2, Sparkles, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { UserCheck, UserPlus, Search, CheckCircle2, AlertCircle, Camera, RefreshCw, Trash2, Sparkles, ChevronLeft, ChevronRight, X, Upload } from 'lucide-react';
 import { api } from '../../services/api';
 import { Student } from '../../types';
 import { getStatusBadge } from '../../components/common/Badge';
@@ -74,14 +74,70 @@ export const StudentManagementPage: React.FC = () => {
     fetchData(1, '');
   };
 
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [photoBase64, setPhotoBase64] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file (JPEG or PNG).');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const maxDim = 480;
+        let w = img.width;
+        let h = img.height;
+        if (w > maxDim || h > maxDim) {
+          if (w > h) {
+            h = Math.round((h * maxDim) / w);
+            w = maxDim;
+          } else {
+            w = Math.round((w * maxDim) / h);
+            h = maxDim;
+          }
+        }
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, w, h);
+          const compressed = canvas.toDataURL('image/jpeg', 0.85);
+          setPhotoPreview(compressed);
+          setPhotoBase64(compressed);
+        }
+      };
+      img.src = event.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemovePhoto = () => {
+    setPhotoPreview(null);
+    setPhotoBase64(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
     setMsg(null);
     try {
-      const res = await api.post('/admin/students', form);
+      const res = await api.post('/admin/students', {
+        ...form,
+        imageBase64: photoBase64
+      });
       setMsg({ type: 'success', text: res.message || 'Student enrolled successfully!' });
       setShowAddModal(false);
+      setPhotoPreview(null);
+      setPhotoBase64(null);
       setForm({
         roll_number: '',
         full_name: '',
@@ -280,13 +336,31 @@ export const StudentManagementPage: React.FC = () => {
                   return (
                     <tr key={std.id} className={`hover:bg-slate-50/50 transition-colors ${recent ? 'bg-blue-50/20' : ''}`}>
                       <td className="py-3 px-3">
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-slate-900">{std.full_name}</span>
-                          {recent && (
-                            <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-blue-700 bg-blue-100/80 px-1.5 py-0.5 rounded-md uppercase tracking-wider">
-                              <Sparkles className="w-2.5 h-2.5" /> Recent
-                            </span>
-                          )}
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-full overflow-hidden bg-slate-100 border border-slate-200 shrink-0 flex items-center justify-center">
+                            {std.photo_url ? (
+                              <img
+                                src={std.photo_url}
+                                alt={std.full_name}
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              <span className="text-xs font-bold text-slate-500 uppercase">
+                                {std.full_name?.charAt(0) || 'S'}
+                              </span>
+                            )}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-slate-900">{std.full_name}</span>
+                              {recent && (
+                                <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-blue-700 bg-blue-100/80 px-1.5 py-0.5 rounded-md uppercase tracking-wider">
+                                  <Sparkles className="w-2.5 h-2.5" /> Recent
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-[10px] text-slate-400 block">{std.email}</span>
+                          </div>
                         </div>
                       </td>
                       <td className="py-3 px-3 font-mono font-medium text-slate-700">{std.roll_number}</td>
@@ -380,6 +454,51 @@ export const StudentManagementPage: React.FC = () => {
         maxWidth="lg"
       >
         <form onSubmit={handleRegister} className="space-y-4 text-xs">
+          {/* Student Profile Photo */}
+          <div className="flex items-center gap-4 p-3 bg-slate-50 border border-slate-200 rounded-xl">
+            <div className="relative w-16 h-16 rounded-full border-2 border-slate-300 bg-white overflow-hidden flex items-center justify-center shrink-0 shadow-inner">
+              {photoPreview ? (
+                <img src={photoPreview} alt="Preview" className="w-full h-full object-cover" />
+              ) : (
+                <Camera className="w-6 h-6 text-slate-400" />
+              )}
+            </div>
+            <div className="flex-1">
+              <label className="block text-xs font-semibold text-slate-700 mb-0.5">
+                Student Photo / Avatar <span className="text-slate-400 font-normal">(Optional)</span>
+              </label>
+              <p className="text-[11px] text-slate-500 mb-2">
+                Upload face photo for campus roster & instant biometric profile.
+              </p>
+              <div className="flex items-center gap-2">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  onChange={handleFileChange}
+                  className="hidden"
+                  id="admin-student-photo"
+                />
+                <label
+                  htmlFor="admin-student-photo"
+                  className="px-3 py-1 bg-white hover:bg-slate-100 border border-slate-300 rounded-lg text-slate-700 font-semibold cursor-pointer text-[11px] inline-flex items-center gap-1.5 transition-colors"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>Choose Photo</span>
+                </label>
+                {photoPreview && (
+                  <button
+                    type="button"
+                    onClick={handleRemovePhoto}
+                    className="px-2.5 py-1 text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer"
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block font-semibold text-slate-700 mb-1">Roll Number *</label>

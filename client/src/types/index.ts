@@ -34,6 +34,7 @@ export interface Student {
   current_status: 'Inside' | 'Outside' | 'On Leave' | 'Unknown';
   has_face_enrolled: number;
   face_descriptor?: string;
+  photo_url?: string;
   attendance_exempt: number;
   today_attendance?: 'Present' | 'Absent' | 'Verification Failed' | 'Excused';
   hostel_lat?: number;
