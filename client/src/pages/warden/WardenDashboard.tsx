@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { supabase } from '../../services/supabase';
 import {
   Users,
   Home,
@@ -53,9 +54,22 @@ export const WardenDashboard: React.FC<WardenDashboardProps> = ({ onNavigate, on
 
   useEffect(() => {
     fetchStats();
-    // Auto-refresh stats every 45s
+    // Auto-refresh stats fallback
     const timer = setInterval(fetchStats, 45000);
-    return () => clearInterval(timer);
+
+    // Supabase Live Realtime Subscription
+    const channel = supabase
+      .channel('warden-dashboard-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'attendance_records' }, () => fetchStats())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'leave_requests' }, () => fetchStats())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'movement_records' }, () => fetchStats())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'exception_alerts' }, () => fetchStats())
+      .subscribe();
+
+    return () => {
+      clearInterval(timer);
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const handleReviewSubmit = async () => {

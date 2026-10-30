@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { UserCheck, UserPlus, Search, CheckCircle2, AlertCircle, Camera, RefreshCw, Trash2, Sparkles, ChevronLeft, ChevronRight, X, Upload } from 'lucide-react';
 import { api } from '../../services/api';
+import { supabase } from '../../services/supabase';
 import { Student } from '../../types';
 import { getStatusBadge } from '../../components/common/Badge';
 import { Modal } from '../../components/common/Modal';
@@ -60,6 +61,22 @@ export const StudentManagementPage: React.FC = () => {
 
   useEffect(() => {
     fetchData(page, searchTerm);
+
+    // Supabase Live Realtime Subscription
+    const channel = supabase
+      .channel('realtime-students-channel')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'students' },
+        () => {
+          fetchData(page, searchTerm);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [page, limit]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
