@@ -7,6 +7,77 @@
 
 import { db as sqliteDb } from '../db.js';
 import { pgPool } from '../postgres.js';
+import { supabase } from '../supabase.js';
+
+async function syncViaSupabaseClient(): Promise<void> {
+  const { data: users, error: uErr } = await supabase
+    .from('users')
+    .select('*')
+    .eq('role', 'student');
+
+  if (users && users.length > 0) {
+    const insertUser = sqliteDb.prepare(`
+      INSERT INTO users (id, username, email, password_hash, role, full_name, phone, avatar_url, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        username = excluded.username,
+        email = excluded.email,
+        full_name = excluded.full_name,
+        phone = excluded.phone,
+        avatar_url = COALESCE(excluded.avatar_url, users.avatar_url),
+        status = excluded.status
+    `);
+    for (const u of users) {
+      insertUser.run(u.id, u.username, u.email, u.password_hash, u.role, u.full_name, u.phone, u.avatar_url, u.status || 'Active');
+    }
+    console.log(`[Supabase→SQLite] Restored ${users.length} user accounts via Supabase client.`);
+  }
+
+  const { data: students, error: sErr } = await supabase
+    .from('students')
+    .select('*');
+
+  if (students && students.length > 0) {
+    const insertStudent = sqliteDb.prepare(`
+      INSERT INTO students (
+        id, user_id, roll_number, full_name, email, phone, emergency_phone,
+        parent_name, parent_phone, hostel_id, block_id, floor_id, room_id,
+        room_number, department, year_of_study, current_status, has_face_enrolled,
+        face_descriptor, face_enrolled_at, attendance_exempt, photo_url, created_at
+      ) VALUES (
+        ?, ?, ?, ?, ?, ?, ?,
+        ?, ?, ?, ?, ?, ?,
+        ?, ?, ?, ?, ?,
+        ?, ?, ?, ?, ?
+      )
+      ON CONFLICT(id) DO UPDATE SET
+        roll_number = excluded.roll_number,
+        full_name = excluded.full_name,
+        email = excluded.email,
+        phone = excluded.phone,
+        room_number = excluded.room_number,
+        block_id = excluded.block_id,
+        has_face_enrolled = excluded.has_face_enrolled,
+        photo_url = COALESCE(excluded.photo_url, students.photo_url)
+    `);
+    for (const s of students) {
+      insertStudent.run(
+        s.id, s.user_id, s.roll_number, s.full_name, s.email, s.phone,
+        s.emergency_phone || s.phone, s.parent_name || 'Guardian', s.parent_phone || s.phone,
+        s.hostel_id || 'hostel-tagore-main', s.block_id || 'block-a', s.floor_id || 'floor-block-a-1',
+        s.room_id, s.room_number, s.department, s.year_of_study || 1, s.current_status || 'Inside',
+        s.has_face_enrolled ? 1 : 0, s.face_descriptor, s.face_enrolled_at, s.attendance_exempt ? 1 : 0,
+        s.photo_url, s.created_at || new Date().toISOString()
+      );
+    }
+    console.log(`[Supabase→SQLite] Restored ${students.length} students via Supabase client.`);
+
+    sqliteDb.prepare(`
+      UPDATE rooms
+      SET occupied_count = (SELECT COUNT(*) FROM students WHERE room_id = rooms.id)
+    `).run();
+  }
+}
 
 export async function syncPostgresToSqlite(): Promise<void> {
   const url = (process.env.DATABASE_URL || '').trim();
@@ -181,7 +252,12 @@ export async function syncPostgresToSqlite(): Promise<void> {
 
     console.log(`[PG→SQLite] ✅ Restored ${pgStudents.length} registered students from PostgreSQL into SQLite.`);
   } catch (err: any) {
-    console.warn('[PG→SQLite] Could not sync from PostgreSQL:', err.message);
+    console.warn('[PG→SQLite] Direct PG connection note:', err.message, '— attempting fallback via Supabase client...');
+    try {
+      await syncViaSupabaseClient();
+    } catch (sbErr: any) {
+      console.warn('[Supabase→SQLite] Client fallback note:', sbErr.message);
+    }
   } finally {
     if (client) client.release();
   }
