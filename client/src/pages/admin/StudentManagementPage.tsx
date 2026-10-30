@@ -42,18 +42,65 @@ export const StudentManagementPage: React.FC = () => {
     setLoading(true);
     try {
       const [stdRes, hRes] = await Promise.all([
-        api.get(`/hostel/students?search=${encodeURIComponent(search)}&page=${currentPage}&limit=${limit}`),
-        api.get('/hostel/hierarchy')
+        api.get(`/hostel/students?search=${encodeURIComponent(search)}&page=${currentPage}&limit=${limit}`).catch(() => null),
+        api.get('/hostel/hierarchy').catch(() => null)
       ]);
-      setStudents(stdRes.students || []);
-      setTotalPages(stdRes.pagination?.totalPages || 1);
-      setTotalCount(stdRes.pagination?.totalCount || 0);
-      setRooms(hRes.rooms || []);
-      if (hRes.rooms?.length > 0 && !form.room_id) {
-        setForm((prev) => ({ ...prev, room_id: hRes.rooms[0].id }));
+
+      let studentList: Student[] = stdRes?.students || [];
+      let total: number = stdRes?.pagination?.totalCount || 0;
+      let totalP: number = stdRes?.pagination?.totalPages || 1;
+
+      // Direct Supabase Cloud Fallback: If local API returned 0 students, pull directly from Supabase Cloud
+      if (studentList.length === 0) {
+        try {
+          let sbQuery = supabase
+            .from('students')
+            .select('*', { count: 'exact' })
+            .order('created_at', { ascending: false });
+
+          if (search) {
+            sbQuery = sbQuery.or(`full_name.ilike.%${search}%,roll_number.ilike.%${search}%,room_number.ilike.%${search}%`);
+          }
+
+          const { data: supaData, count: supaCount, error: supaErr } = await sbQuery;
+          if (!supaErr && supaData && supaData.length > 0) {
+            total = supaCount || supaData.length;
+            totalP = Math.max(1, Math.ceil(total / limit));
+            const start = (currentPage - 1) * limit;
+            studentList = (supaData.slice(start, start + limit) as unknown) as Student[];
+          }
+        } catch (sbError) {
+          console.warn('Direct Supabase fetch warning:', sbError);
+        }
+      }
+
+      setStudents(studentList);
+      setTotalPages(totalP);
+      setTotalCount(total);
+
+      if (hRes?.rooms) {
+        setRooms(hRes.rooms);
+        if (hRes.rooms.length > 0 && !form.room_id) {
+          setForm((prev) => ({ ...prev, room_id: hRes.rooms[0].id }));
+        }
       }
     } catch (err) {
       console.error(err);
+      // Supabase direct fallback if entire request fails
+      try {
+        const { data: supaData, count: supaCount } = await supabase
+          .from('students')
+          .select('*', { count: 'exact' })
+          .order('created_at', { ascending: false });
+        if (supaData && supaData.length > 0) {
+          const total = supaCount || supaData.length;
+          setTotalCount(total);
+          setTotalPages(Math.max(1, Math.ceil(total / limit)));
+          setStudents((supaData.slice(0, limit) as unknown) as Student[]);
+        }
+      } catch (e) {
+        console.error('Supabase fallback error:', e);
+      }
     } finally {
       setLoading(false);
     }

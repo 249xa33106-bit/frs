@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { db, ensureCampusInfrastructure } from '../db.js';
 import { AuthenticatedRequest, authenticateToken, requireRole } from '../middleware/auth.js';
+import { supabase } from '../supabase.js';
 
 export const hostelRouter = Router();
 
@@ -65,7 +66,7 @@ hostelRouter.get('/rooms/:id', (req: AuthenticatedRequest, res) => {
 });
 
 // 3. Student Search with comprehensive filtering
-hostelRouter.get('/students', (req: AuthenticatedRequest, res) => {
+hostelRouter.get('/students', async (req: AuthenticatedRequest, res) => {
   const {
     search,
     block_id,
@@ -127,7 +128,7 @@ hostelRouter.get('/students', (req: AuthenticatedRequest, res) => {
   query += ` LIMIT ? OFFSET ?`;
   params.push(parseInt(limit, 10), offset);
 
-  const students = db.prepare(query).all(...params);
+  let students = db.prepare(query).all(...params) as any[];
 
   // Total count query
   let countQuery = `SELECT count(*) as count FROM students s WHERE 1=1`;
@@ -158,7 +159,23 @@ hostelRouter.get('/students', (req: AuthenticatedRequest, res) => {
     countParams.push(department);
   }
 
-  const totalCount = (db.prepare(countQuery).get(...countParams) as any).count;
+  let totalCount = (db.prepare(countQuery).get(...countParams) as any).count;
+
+  // Supabase Cloud Fallback: If local database has 0 students and no search, pull directly from Supabase Cloud
+  if (totalCount === 0 && !search && (!block_id || block_id === 'All')) {
+    try {
+      const { data: supaStudents } = await supabase
+        .from('students')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (supaStudents && supaStudents.length > 0) {
+        totalCount = supaStudents.length;
+        students = supaStudents.slice(offset, offset + parseInt(limit, 10));
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
 
   res.json({
     students,
@@ -166,7 +183,7 @@ hostelRouter.get('/students', (req: AuthenticatedRequest, res) => {
       page: parseInt(page, 10),
       limit: parseInt(limit, 10),
       totalCount,
-      totalPages: Math.ceil(totalCount / parseInt(limit, 10))
+      totalPages: Math.max(1, Math.ceil(totalCount / parseInt(limit, 10)))
     }
   });
 });

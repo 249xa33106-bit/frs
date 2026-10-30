@@ -64,6 +64,7 @@ export const WardenDashboard: React.FC<WardenDashboardProps> = ({ onNavigate, on
       .on('postgres_changes', { event: '*', schema: 'public', table: 'leave_requests' }, () => fetchStats())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'movement_records' }, () => fetchStats())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'exception_alerts' }, () => fetchStats())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'students' }, () => fetchStats())
       .subscribe();
 
     return () => {

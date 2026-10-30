@@ -15,6 +15,10 @@ async function syncViaSupabaseClient(): Promise<void> {
     .select('*')
     .eq('role', 'student');
 
+  if (uErr) {
+    console.warn('[Supabase→SQLite] Users fetch error:', uErr.message);
+  }
+
   if (users && users.length > 0) {
     const insertUser = sqliteDb.prepare(`
       INSERT INTO users (id, username, email, password_hash, role, full_name, phone, avatar_url, status)
@@ -37,6 +41,10 @@ async function syncViaSupabaseClient(): Promise<void> {
     .from('students')
     .select('*');
 
+  if (sErr) {
+    console.warn('[Supabase→SQLite] Students fetch error:', sErr.message);
+  }
+
   if (students && students.length > 0) {
     const insertStudent = sqliteDb.prepare(`
       INSERT INTO students (
@@ -50,8 +58,7 @@ async function syncViaSupabaseClient(): Promise<void> {
         ?, ?, ?, ?, ?,
         ?, ?, ?, ?, ?
       )
-      ON CONFLICT(id) DO UPDATE SET
-        roll_number = excluded.roll_number,
+      ON CONFLICT(roll_number) DO UPDATE SET
         full_name = excluded.full_name,
         email = excluded.email,
         phone = excluded.phone,

@@ -5,6 +5,7 @@ import { safePgQuery } from '../postgres.js';
 import { AuthenticatedRequest, authenticateToken, requireRole } from '../middleware/auth.js';
 import { runExceptionDetectionJob } from '../services/exceptionEngine.js';
 import { detectFaceBiometrics } from '../utils/faceClient.js';
+import { supabase } from '../supabase.js';
 
 export const adminRouter = Router();
 
@@ -244,6 +245,45 @@ adminRouter.post('/students', (req: AuthenticatedRequest, res) => {
     WHERE id = ?
   `).run(room.id);
 
+  // Mirror to Supabase Cloud
+  try {
+    supabase.from('users').upsert({
+      id: userId,
+      username: roll_number.toLowerCase(),
+      email,
+      password_hash: defaultPasswordHash,
+      role: 'student',
+      full_name,
+      phone,
+      status: 'Active',
+      avatar_url: photoUrl
+    }).then(() => {}).catch(e => console.warn('[Supabase Mirror User]', e));
+
+    supabase.from('students').upsert({
+      id: studentId,
+      user_id: userId,
+      roll_number,
+      full_name,
+      email,
+      phone,
+      emergency_phone: emergency_phone || phone,
+      parent_name: parent_name || 'Guardian',
+      parent_phone: parent_phone || phone,
+      hostel_id: 'hostel-tagore-main',
+      block_id: room.block_id,
+      floor_id: room.floor_id,
+      room_id: room.id,
+      room_number: room.room_number,
+      department: department || 'Engineering',
+      year_of_study: year_of_study || 1,
+      current_status: 'Inside',
+      has_face_enrolled: 0,
+      photo_url: photoUrl
+    }).then(() => {}).catch(e => console.warn('[Supabase Mirror Student]', e));
+  } catch (sbErr) {
+    console.warn('[Supabase Direct Mirror Error]', sbErr);
+  }
+
   // Audit log
   db.prepare(`
     INSERT INTO audit_logs (id, user_id, action, target_type, target_id, details)
@@ -323,6 +363,27 @@ adminRouter.post('/students/:id/face-enroll', async (req: AuthenticatedRequest, 
         SET face_descriptor = $1, has_face_enrolled = 1, face_enrolled_at = NOW()
         WHERE id = $2
       `, [descriptorStr, studentId]);
+    }
+
+    // Mirror face biometrics and photo to Supabase Cloud
+    try {
+      const supaUpdate: any = {
+        face_descriptor: descriptorStr,
+        has_face_enrolled: 1,
+        face_enrolled_at: new Date().toISOString()
+      };
+      if (photoUrl) {
+        supaUpdate.photo_url = photoUrl;
+      }
+      supabase.from('students').update(supaUpdate).eq('id', studentId).then(() => {}).catch(e => console.warn(e));
+      if (photoUrl) {
+        const std = db.prepare('SELECT user_id FROM students WHERE id = ?').get(studentId) as any;
+        if (std?.user_id) {
+          supabase.from('users').update({ avatar_url: photoUrl }).eq('id', std.user_id).then(() => {}).catch(e => console.warn(e));
+        }
+      }
+    } catch (e) {
+      console.warn('[Supabase Face Enroll Mirror Warn]', e);
     }
 
     db.prepare(`
@@ -410,6 +471,16 @@ adminRouter.delete('/students/:studentId', (req: AuthenticatedRequest, res) => {
       db.prepare('DELETE FROM users WHERE id = ?').run(student.user_id);
     }
     db.prepare(`UPDATE rooms SET occupied_count = (SELECT COUNT(*) FROM students WHERE room_id = rooms.id)`).run();
+
+    // Mirror delete to Supabase Cloud
+    try {
+      supabase.from('students').delete().eq('id', studentId).then(() => {}).catch(e => console.warn(e));
+      if (student.user_id) {
+        supabase.from('users').delete().eq('id', student.user_id).then(() => {}).catch(e => console.warn(e));
+      }
+    } catch (e) {
+      console.warn('[Supabase Student Delete Mirror Warn]', e);
+    }
 
     db.prepare(`INSERT INTO audit_logs (id, user_id, action, target_type, target_id, details) VALUES (?, ?, 'DELETE_STUDENT', 'student', ?, ?)`)
       .run(`aud-${Date.now()}`, req.user!.id, studentId, `Admin deleted student ${studentId}`);
