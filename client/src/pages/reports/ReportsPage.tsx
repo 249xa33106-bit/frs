@@ -135,9 +135,9 @@ export const ReportsPage: React.FC = () => {
               className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700"
             >
               <option value="All">All Blocks</option>
-              <option value="block-a">Block A - Nalanda</option>
-              <option value="block-b">Block B - Takshashila</option>
-              <option value="block-c">Block C - Aryabhata</option>
+              <option value="block-a">Block A - Annapurna</option>
+              <option value="block-b">Block B - Arundhati</option>
+              <option value="block-c">Block C - Anuradha</option>
             </select>
           </div>
 

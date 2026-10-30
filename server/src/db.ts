@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 import bcrypt from 'bcryptjs';
+import { safePgQuery } from './postgres.js';
 
 const DB_DIR = path.resolve(process.cwd(), 'data');
 if (!fs.existsSync(DB_DIR)) {
@@ -249,8 +250,26 @@ export function initDatabase() {
   // Automatically guarantee campus architecture (Hostels, Blocks, Floors, 300 Rooms, Staff)
   ensureCampusInfrastructure();
   applyAuthoritativeGeofence();
+  updateAuthoritativeBlockNames();
 
   console.log('Database initialized successfully with complete normalized schema and room infrastructure.');
+}
+
+export function updateAuthoritativeBlockNames() {
+  const blocks = [
+    { id: 'block-a', name: 'Block A - Annapurna', code: 'BLK-A' },
+    { id: 'block-b', name: 'Block B - Arundhati', code: 'BLK-B' },
+    { id: 'block-c', name: 'Block C - Anuradha', code: 'BLK-C' }
+  ];
+
+  try {
+    for (const b of blocks) {
+      db.prepare(`UPDATE blocks SET name = ?, code = ? WHERE id = ?`).run(b.name, b.code, b.id);
+      safePgQuery(`UPDATE blocks SET name = $1, code = $2 WHERE id = $3`, [b.name, b.code, b.id]);
+    }
+  } catch (err: any) {
+    console.warn('[DB Block Update Note]', err.message);
+  }
 }
 
 export function applyAuthoritativeGeofence() {
@@ -309,9 +328,9 @@ export function ensureCampusInfrastructure() {
   );
 
   const blocksData = [
-    { id: 'block-a', name: 'Block A - Nalanda (Engineering Wing)', code: 'BLK-A', gender: 'Co-ed' },
-    { id: 'block-b', name: 'Block B - Takshashila (Sciences Wing)', code: 'BLK-B', gender: 'Co-ed' },
-    { id: 'block-c', name: 'Block C - Aryabhata (PG & Research Wing)', code: 'BLK-C', gender: 'Co-ed' }
+    { id: 'block-a', name: 'Block A - Annapurna', code: 'BLK-A', gender: 'Co-ed' },
+    { id: 'block-b', name: 'Block B - Arundhati', code: 'BLK-B', gender: 'Co-ed' },
+    { id: 'block-c', name: 'Block C - Anuradha', code: 'BLK-C', gender: 'Co-ed' }
   ];
 
   const insertBlock = db.prepare(`

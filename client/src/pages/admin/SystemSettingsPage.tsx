@@ -230,7 +230,7 @@ export const SystemSettingsPage: React.FC = () => {
           </div>
           <div className="flex items-center justify-between">
             <span className="text-slate-500">Operational Records:</span>
-            <span className="font-medium text-slate-800">1,200 Students • 300 Rooms • 3 Blocks (Nalanda, Takshashila, Aryabhata)</span>
+            <span className="font-medium text-slate-800">1,200 Students • 300 Rooms • 3 Blocks (Annapurna, Arundhati, Anuradha)</span>
           </div>
           {serviceInfo?.databaseDetails?.postgresConnected && serviceInfo?.databaseDetails?.postgresVersion && (
             <div className="pt-2 border-t border-slate-200/80 flex items-center justify-between text-slate-600 text-[11px]">

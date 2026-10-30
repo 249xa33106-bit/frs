@@ -327,6 +327,7 @@ authRouter.post('/register-student', async (req, res) => {
       emergency_phone,
       parent_name,
       parent_phone,
+      block_id,
       room_id,
       department,
       year_of_study,
@@ -343,10 +344,15 @@ authRouter.post('/register-student', async (req, res) => {
       return res.status(400).json({ error: `An account with roll number ${cleanRoll} or email ${email} already exists.` });
     }
 
-    // Default to first available room if not explicitly selected
+    // Assign room in selected block (Block A - Annapurna, Block B - Arundhati, Block C - Anuradha)
+    const targetBlockId = block_id || 'block-a';
     let selectedRoom: any = null;
     if (room_id) {
       selectedRoom = db.prepare('SELECT * FROM rooms WHERE id = ?').get(room_id);
+    }
+    if (!selectedRoom && targetBlockId) {
+      selectedRoom = db.prepare('SELECT * FROM rooms WHERE block_id = ? AND occupied_count < capacity LIMIT 1').get(targetBlockId) ||
+                     db.prepare('SELECT * FROM rooms WHERE block_id = ? LIMIT 1').get(targetBlockId);
     }
     if (!selectedRoom) {
       selectedRoom = db.prepare('SELECT * FROM rooms WHERE occupied_count < capacity LIMIT 1').get() ||
@@ -355,17 +361,18 @@ authRouter.post('/register-student', async (req, res) => {
 
     if (!selectedRoom) {
       ensureCampusInfrastructure();
-      selectedRoom = db.prepare('SELECT * FROM rooms WHERE occupied_count < capacity LIMIT 1').get() ||
+      selectedRoom = (targetBlockId ? db.prepare('SELECT * FROM rooms WHERE block_id = ? AND occupied_count < capacity LIMIT 1').get(targetBlockId) : null) ||
+                     db.prepare('SELECT * FROM rooms WHERE occupied_count < capacity LIMIT 1').get() ||
                      db.prepare('SELECT * FROM rooms LIMIT 1').get();
     }
 
     if (!selectedRoom) {
       const fallbackHostelId = 'hostel-tagore-main';
-      const fallbackBlockId = 'block-a';
-      const fallbackFloorId = 'floor-block-a-1';
-      const fallbackRoomId = 'room-block-a-101';
+      const fallbackBlockId = targetBlockId || 'block-a';
+      const fallbackFloorId = `floor-${fallbackBlockId}-1`;
+      const fallbackRoomId = `room-${fallbackBlockId}-101`;
       db.prepare(`INSERT OR IGNORE INTO hostels (id, name, code) VALUES (?, 'Tagore Central Hostel Complex', 'TCHC-01')`).run(fallbackHostelId);
-      db.prepare(`INSERT OR IGNORE INTO blocks (id, hostel_id, name, code) VALUES (?, ?, 'Block A - Nalanda (Engineering Wing)', 'BLK-A')`).run(fallbackBlockId, fallbackHostelId);
+      db.prepare(`INSERT OR IGNORE INTO blocks (id, hostel_id, name, code) VALUES (?, ?, 'Block A - Annapurna', 'BLK-A')`).run(fallbackBlockId, fallbackHostelId);
       db.prepare(`INSERT OR IGNORE INTO floors (id, block_id, floor_number, name) VALUES (?, ?, 1, 'Ground Floor')`).run(fallbackFloorId, fallbackBlockId);
       db.prepare(`INSERT OR IGNORE INTO rooms (id, floor_id, block_id, room_number, capacity, occupied_count) VALUES (?, ?, ?, 'A-101', 4, 0)`).run(fallbackRoomId, fallbackFloorId, fallbackBlockId);
       selectedRoom = db.prepare('SELECT * FROM rooms WHERE id = ?').get(fallbackRoomId);

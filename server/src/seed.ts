@@ -70,9 +70,9 @@ export function seedData() {
 
   // 2. Create Blocks
   const blocksData = [
-    { id: 'block-a', name: 'Block A - Nalanda (Engineering Wing)', code: 'BLK-A', gender: 'Co-ed' },
-    { id: 'block-b', name: 'Block B - Takshashila (Sciences Wing)', code: 'BLK-B', gender: 'Co-ed' },
-    { id: 'block-c', name: 'Block C - Aryabhata (PG & Research Wing)', code: 'BLK-C', gender: 'Co-ed' }
+    { id: 'block-a', name: 'Block A - Annapurna', code: 'BLK-A', gender: 'Co-ed' },
+    { id: 'block-b', name: 'Block B - Arundhati', code: 'BLK-B', gender: 'Co-ed' },
+    { id: 'block-c', name: 'Block C - Anuradha', code: 'BLK-C', gender: 'Co-ed' }
   ];
 
   const insertBlock = db.prepare(`
