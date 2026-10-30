@@ -89,7 +89,66 @@ export async function syncPostgresToSqlite(): Promise<void> {
       );
     }
 
-    // ── 3. Recalculate room occupancy after restore ──────────────────────────────
+    // ── 3. Sync attendance records from Neon PostgreSQL ───────────────────────────
+    try {
+      // Only sync attendance records for students that actually exist in SQLite
+      const { rows: pgAttendance } = await client.query(`
+        SELECT a.id, a.student_id, a.date, a.session_name, a.status, a.verification_method,
+               a.confidence_score, a.liveness_verified, a.location_verified, a.latitude,
+               a.longitude, a.distance_from_hostel_meters, a.failure_reason, a.timestamp,
+               a.verified_by_user_id
+        FROM attendance_records a
+        WHERE a.student_id LIKE 'std-real-%'
+           OR a.student_id IN (SELECT id FROM students WHERE id LIKE 'std-real-%')
+        ORDER BY a.timestamp DESC
+        LIMIT 5000
+      `);
+
+      const insertAttendance = sqliteDb.prepare(`
+        INSERT OR IGNORE INTO attendance_records (
+          id, student_id, date, session_name, status, verification_method,
+          confidence_score, liveness_verified, location_verified, latitude,
+          longitude, distance_from_hostel_meters, failure_reason, timestamp,
+          verified_by_user_id
+        ) VALUES (
+          ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?,
+          ?, ?, ?, ?,
+          ?
+        )
+      `);
+
+      let syncedCount = 0;
+      for (const a of pgAttendance) {
+        // Double-check student exists in SQLite
+        const exists = sqliteDb.prepare('SELECT id FROM students WHERE id = ?').get(a.student_id);
+        if (exists) {
+          insertAttendance.run(
+            a.id,
+            a.student_id,
+            a.date ? (a.date instanceof Date ? a.date.toISOString().split('T')[0] : String(a.date).slice(0, 10)) : new Date().toISOString().split('T')[0],
+            a.session_name || 'Evening Curfew Check',
+            a.status || 'Present',
+            a.verification_method || 'Face + Geolocation',
+            a.confidence_score ? Number(a.confidence_score) : 0.95,
+            a.liveness_verified ? 1 : 0,
+            a.location_verified ? 1 : 0,
+            a.latitude ? Number(a.latitude) : 15.774299,
+            a.longitude ? Number(a.longitude) : 78.054718,
+            a.distance_from_hostel_meters ? Number(a.distance_from_hostel_meters) : 0,
+            a.failure_reason ?? null,
+            a.timestamp ? (a.timestamp instanceof Date ? a.timestamp.toISOString() : String(a.timestamp)) : new Date().toISOString(),
+            a.verified_by_user_id ?? null
+          );
+          syncedCount++;
+        }
+      }
+      console.log(`[PG→SQLite] ✅ Restored ${syncedCount} attendance records for registered students into SQLite.`);
+    } catch (attErr: any) {
+      console.warn('[PG→SQLite] Attendance records sync warning:', attErr.message);
+    }
+
+    // ── 4. Recalculate room occupancy after restore ──────────────────────────────
     sqliteDb.prepare(`
       UPDATE rooms
       SET occupied_count = (SELECT COUNT(*) FROM students WHERE room_id = rooms.id)
