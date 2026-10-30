@@ -164,7 +164,13 @@ app.post('/api/system/migrate-to-postgres', async (req, res) => {
 });
 
 // Serve frontend in production build if client/dist exists
-const clientDistPath = path.resolve(__dirname, '../../client/dist');
+const possibleDistPaths = [
+  path.resolve(process.cwd(), 'client/dist'),
+  path.resolve(__dirname, '../../client/dist'),
+  path.resolve(__dirname, '../client/dist'),
+  path.resolve(__dirname, '../../../client/dist')
+];
+const clientDistPath = possibleDistPaths.find(p => fs.existsSync(p)) || possibleDistPaths[0];
 app.use(express.static(clientDistPath));
 app.use((req, res, next) => {
   if (req.path.startsWith('/api')) {
@@ -172,9 +178,8 @@ app.use((req, res, next) => {
   }
   res.sendFile(path.join(clientDistPath, 'index.html'), (err) => {
     if (err) {
-      // In dev mode when client is served by Vite on port 3000
       res.status(200).json({
-        message: 'Hostel Safety API Server running on port 5000. Connect via frontend dev server at port 3000.'
+        message: 'Hostel Safety API Server running. Connect via client on port 3000 or build client/dist.'
       });
     }
   });
