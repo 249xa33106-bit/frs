@@ -30,17 +30,25 @@ import { AuditLogsPage } from './pages/admin/AuditLogsPage';
 
 const AppContent: React.FC = () => {
   const { user, loading } = useAuth();
-  const [currentRoute, setCurrentRoute] = useState<string>('');
+  const [currentRoute, setCurrentRoute] = useState<string>(() => {
+    return sessionStorage.getItem('hostel_current_route') || '';
+  });
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [focusedStudentId, setFocusedStudentId] = useState<string | null>(null);
 
-  // Set default route whenever user or role changes
+  // Restore route or set default route whenever user or role changes
   useEffect(() => {
     if (user) {
-      if (user.role === 'student') {
-        setCurrentRoute('student-dashboard');
+      const savedRoute = sessionStorage.getItem('hostel_current_route');
+      if (savedRoute && (
+        (user.role === 'student' && savedRoute.startsWith('student-')) ||
+        (user.role !== 'student' && !savedRoute.startsWith('student-'))
+      )) {
+        setCurrentRoute(savedRoute);
       } else {
-        setCurrentRoute('warden-dashboard');
+        const defaultRoute = user.role === 'student' ? 'student-dashboard' : 'warden-dashboard';
+        setCurrentRoute(defaultRoute);
+        sessionStorage.setItem('hostel_current_route', defaultRoute);
       }
     }
   }, [user?.role]);
@@ -62,6 +70,7 @@ const AppContent: React.FC = () => {
 
   const navigateTo = (route: string) => {
     setCurrentRoute(route);
+    sessionStorage.setItem('hostel_current_route', route);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 

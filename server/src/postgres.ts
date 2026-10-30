@@ -43,6 +43,18 @@ export function createPoolConfig(databaseUrl?: string): PoolConfig {
 
 export let pgPool = new Pool(createPoolConfig());
 
+export async function safePgQuery(text: string, params: any[] = []): Promise<boolean> {
+  const url = (process.env.DATABASE_URL || '').trim();
+  if (!url) return false;
+  try {
+    await pgPool.query(text, params);
+    return true;
+  } catch (err: any) {
+    console.warn('[Postgres Mirror Note]', err.message);
+    return false;
+  }
+}
+
 export function configurePgPool(newConnectionString?: string) {
   if (newConnectionString && newConnectionString.trim()) {
     process.env.DATABASE_URL = newConnectionString.trim();

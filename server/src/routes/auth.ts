@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import { db, ensureCampusInfrastructure } from '../db.js';
 import { generateToken, authenticateToken, AuthenticatedRequest } from '../middleware/auth.js';
 import { detectFaceBiometrics } from '../utils/faceClient.js';
+import { safePgQuery } from '../postgres.js';
 
 export const authRouter = Router();
 
@@ -242,6 +243,8 @@ authRouter.post('/reset-password-otp', (req, res) => {
     WHERE id = ?
   `).run(passwordHash, record.userId);
 
+  safePgQuery(`UPDATE users SET password_hash = $1 WHERE id = $2`, [passwordHash, record.userId]);
+
   // Clean up OTP cache
   passwordResetOtpMap.delete(record.userId);
   passwordResetOtpMap.delete(record.identifier.toLowerCase());
@@ -352,6 +355,12 @@ authRouter.post('/register-student', async (req, res) => {
       VALUES (?, ?, ?, ?, 'student', ?, ?, 'Active', datetime('now'))
     `).run(userId, cleanRoll, email.trim().toLowerCase(), passwordHash, full_name.trim(), phone.trim());
 
+    safePgQuery(`
+      INSERT INTO users (id, username, email, password_hash, role, full_name, phone, status, created_at)
+      VALUES ($1, $2, $3, $4, 'student', $5, $6, 'Active', NOW())
+      ON CONFLICT (id) DO NOTHING
+    `, [userId, cleanRoll, email.trim().toLowerCase(), passwordHash, full_name.trim(), phone.trim()]);
+
     // Optional Face Enrollment from imageBase64 if submitted during registration
     let faceDescriptorStr: string | null = null;
     let hasFaceEnrolled = 0;
@@ -399,6 +408,39 @@ authRouter.post('/register-student', async (req, res) => {
       hasFaceEnrolled,
       faceDescriptorStr
     );
+
+    safePgQuery(`
+      INSERT INTO students (
+        id, user_id, roll_number, full_name, email, phone, emergency_phone,
+        parent_name, parent_phone, hostel_id, block_id, floor_id, room_id,
+        room_number, department, year_of_study, current_status, has_face_enrolled,
+        face_descriptor, created_at
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6, $7,
+        $8, $9, 'hostel-tagore-main', $10, $11, $12,
+        $13, $14, $15, 'Inside', $16,
+        $17, NOW()
+      )
+      ON CONFLICT (id) DO NOTHING
+    `, [
+      studentId,
+      userId,
+      cleanRoll,
+      full_name.trim(),
+      email.trim().toLowerCase(),
+      phone.trim(),
+      emergency_phone ? emergency_phone.trim() : phone.trim(),
+      parent_name ? parent_name.trim() : 'Guardian',
+      parent_phone ? parent_phone.trim() : phone.trim(),
+      selectedRoom.block_id,
+      selectedRoom.floor_id,
+      selectedRoom.id,
+      selectedRoom.room_number,
+      department || 'Computer Science & Engineering',
+      Number(year_of_study) || 1,
+      hasFaceEnrolled,
+      faceDescriptorStr
+    ]);
 
     // Update room occupancy
     db.prepare(`UPDATE rooms SET occupied_count = occupied_count + 1 WHERE id = ?`).run(selectedRoom.id);

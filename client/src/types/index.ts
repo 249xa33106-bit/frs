@@ -39,6 +39,7 @@ export interface Student {
   hostel_lat?: number;
   hostel_lng?: number;
   geofence_radius_meters?: number;
+  created_at?: string;
 }
 
 export interface AttendanceRecord {

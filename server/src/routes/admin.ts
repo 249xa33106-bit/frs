@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { db } from '../db.js';
+import { safePgQuery } from '../postgres.js';
 import { AuthenticatedRequest, authenticateToken, requireRole } from '../middleware/auth.js';
 import { runExceptionDetectionJob } from '../services/exceptionEngine.js';
 import { detectFaceBiometrics } from '../utils/faceClient.js';
@@ -109,6 +110,12 @@ adminRouter.post('/users', (req: AuthenticatedRequest, res) => {
     VALUES (?, ?, ?, ?, ?, ?, ?, 'Active')
   `).run(userId, username, email, hash, role, full_name, phone || null);
 
+  safePgQuery(`
+    INSERT INTO users (id, username, email, password_hash, role, full_name, phone, status, created_at)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, 'Active', NOW())
+    ON CONFLICT (id) DO UPDATE SET password_hash = EXCLUDED.password_hash, role = EXCLUDED.role, full_name = EXCLUDED.full_name
+  `, [userId, username, email, hash, role, full_name, phone || null]);
+
   db.prepare(`
     INSERT INTO audit_logs (id, user_id, action, target_type, target_id, details)
     VALUES (?, ?, 'CREATE_USER', 'users', ?, ?)
@@ -156,6 +163,12 @@ adminRouter.post('/students', (req: AuthenticatedRequest, res) => {
     VALUES (?, ?, ?, ?, 'student', ?, ?, 'Active')
   `).run(userId, roll_number.toLowerCase(), email, defaultPasswordHash, full_name, phone);
 
+  safePgQuery(`
+    INSERT INTO users (id, username, email, password_hash, role, full_name, phone, status, created_at)
+    VALUES ($1, $2, $3, $4, 'student', $5, $6, 'Active', NOW())
+    ON CONFLICT (id) DO UPDATE SET password_hash = EXCLUDED.password_hash, full_name = EXCLUDED.full_name
+  `, [userId, roll_number.toLowerCase(), email, defaultPasswordHash, full_name, phone]);
+
   // Create student
   db.prepare(`
     INSERT INTO students (
@@ -184,6 +197,37 @@ adminRouter.post('/students', (req: AuthenticatedRequest, res) => {
     department || 'Engineering',
     year_of_study || 1
   );
+
+  safePgQuery(`
+    INSERT INTO students (
+      id, user_id, roll_number, full_name, email, phone, emergency_phone,
+      parent_name, parent_phone, hostel_id, block_id, floor_id, room_id,
+      room_number, department, year_of_study, current_status, has_face_enrolled,
+      created_at
+    ) VALUES (
+      $1, $2, $3, $4, $5, $6, $7,
+      $8, $9, 'hostel-tagore-main', $10, $11, $12,
+      $13, $14, $15, 'Inside', 0,
+      NOW()
+    )
+    ON CONFLICT (id) DO NOTHING
+  `, [
+    studentId,
+    userId,
+    roll_number,
+    full_name,
+    email,
+    phone,
+    emergency_phone || phone,
+    parent_name || 'Guardian',
+    parent_phone || phone,
+    room.block_id,
+    room.floor_id,
+    room.id,
+    room.room_number,
+    department || 'Engineering',
+    year_of_study || 1
+  ]);
 
   // Update room count
   db.prepare(`

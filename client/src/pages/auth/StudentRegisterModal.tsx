@@ -47,7 +47,8 @@ export const StudentRegisterModal: React.FC<StudentRegisterModalProps> = ({ isOp
       if (res.token) {
         localStorage.setItem('hostel_safety_token', res.token);
         localStorage.setItem('hostel_safety_user', JSON.stringify(res.user));
-        window.location.href = '/student';
+        sessionStorage.setItem('hostel_current_route', 'student-dashboard');
+        window.location.href = '/';
       }
     } catch (err: any) {
       setError(err.message || 'Registration failed.');

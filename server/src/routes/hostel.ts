@@ -118,7 +118,7 @@ hostelRouter.get('/students', (req: AuthenticatedRequest, res) => {
     params.push(department);
   }
 
-  query += ` ORDER BY s.roll_number ASC`;
+  query += ` ORDER BY s.created_at DESC, s.rowid DESC`;
 
   const offset = (parseInt(page, 10) - 1) * parseInt(limit, 10);
   query += ` LIMIT ? OFFSET ?`;
