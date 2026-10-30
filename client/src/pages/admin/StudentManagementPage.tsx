@@ -264,7 +264,7 @@ export const StudentManagementPage: React.FC = () => {
                 <th className="py-2.5 px-3">Phone</th>
                 <th className="py-2.5 px-3">Biometrics</th>
                 <th className="py-2.5 px-3">Live Status</th>
-                <th className="py-2.5 px-3 text-right">Biometric Action</th>
+                <th className="py-2.5 px-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -311,12 +311,29 @@ export const StudentManagementPage: React.FC = () => {
                       </td>
                       <td className="py-3 px-3">{getStatusBadge(std.current_status)}</td>
                       <td className="py-3 px-3 text-right">
-                        <button
-                          onClick={() => setEnrollingStudent(std)}
-                          className="px-2.5 py-1 bg-slate-100 hover:bg-blue-50 hover:text-blue-700 text-slate-700 font-semibold rounded-lg text-[11px] transition-colors cursor-pointer"
-                        >
-                          {std.has_face_enrolled ? 'Re-enroll Face' : 'Enroll Face'}
-                        </button>
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => setEnrollingStudent(std)}
+                            className="px-2.5 py-1 bg-slate-100 hover:bg-blue-50 hover:text-blue-700 text-slate-700 font-semibold rounded-lg text-[11px] transition-colors cursor-pointer"
+                          >
+                            {std.has_face_enrolled ? 'Re-enroll Face' : 'Enroll Face'}
+                          </button>
+                          <button
+                            onClick={async () => {
+                              if (!confirm(`Delete student ${std.full_name} (${std.roll_number})? This cannot be undone.`)) return;
+                              try {
+                                await api.delete(`/admin/students/${std.id}`);
+                                fetchData(page, searchTerm);
+                              } catch (err: any) {
+                                alert('Failed to delete: ' + (err.message || 'Unknown error'));
+                              }
+                            }}
+                            className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-600 hover:text-rose-700 font-semibold rounded-lg text-[11px] transition-colors cursor-pointer border border-rose-200"
+                            title="Delete student"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );

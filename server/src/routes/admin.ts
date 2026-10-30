@@ -352,6 +352,38 @@ adminRouter.post('/clear-demo-students', (req: AuthenticatedRequest, res) => {
   }
 });
 
+// Delete a single student by ID (Admin only)
+adminRouter.delete('/students/:studentId', (req: AuthenticatedRequest, res) => {
+  const { studentId } = req.params;
+  if (req.user?.role !== 'admin') {
+    return res.status(403).json({ error: 'Admin access required.' });
+  }
+  try {
+    const student = db.prepare('SELECT id, user_id FROM students WHERE id = ?').get(studentId) as any;
+    if (!student) {
+      return res.status(404).json({ error: 'Student not found.' });
+    }
+
+    db.prepare('DELETE FROM attendance_records WHERE student_id = ?').run(studentId);
+    db.prepare('DELETE FROM movement_records WHERE student_id = ?').run(studentId);
+    db.prepare('DELETE FROM leave_requests WHERE student_id = ?').run(studentId);
+    db.prepare('DELETE FROM exception_alerts WHERE student_id = ?').run(studentId);
+    db.prepare('DELETE FROM notifications WHERE student_id = ?').run(studentId);
+    db.prepare('DELETE FROM students WHERE id = ?').run(studentId);
+    if (student.user_id) {
+      db.prepare('DELETE FROM users WHERE id = ?').run(student.user_id);
+    }
+    db.prepare(`UPDATE rooms SET occupied_count = (SELECT COUNT(*) FROM students WHERE room_id = rooms.id)`).run();
+
+    db.prepare(`INSERT INTO audit_logs (id, user_id, action, target_type, target_id, details) VALUES (?, ?, 'DELETE_STUDENT', 'student', ?, ?)`)
+      .run(`aud-${Date.now()}`, req.user!.id, studentId, `Admin deleted student ${studentId}`);
+
+    res.json({ success: true, message: 'Student deleted successfully.' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Failed to delete student' });
+  }
+});
+
 // 5. Audit Logs
 adminRouter.get('/audit-logs', (req: AuthenticatedRequest, res) => {
   const { limit = '50' } = req.query as any;
