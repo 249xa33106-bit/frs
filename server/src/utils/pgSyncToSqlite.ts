@@ -30,7 +30,7 @@ export async function syncPostgresToSqlite(): Promise<void> {
     const { rows: pgUsers } = await client.query(`
       SELECT id, username, email, password_hash, role, full_name, phone, avatar_url, status, created_at
       FROM users
-      WHERE id LIKE 'usr-real-%'
+      WHERE role = 'student' AND (id LIKE 'usr-real-%' OR NOT username LIKE 'tagore%')
     `);
 
     const insertUser = sqliteDb.prepare(`
@@ -57,7 +57,7 @@ export async function syncPostgresToSqlite(): Promise<void> {
              room_number, department, year_of_study, current_status, has_face_enrolled,
              face_descriptor, face_enrolled_at, attendance_exempt, photo_url, created_at
       FROM students
-      WHERE id LIKE 'std-real-%'
+      WHERE id LIKE 'std-real-%' OR NOT (roll_number LIKE 'TAGORE-%' OR id LIKE 'std-0%')
       ORDER BY created_at ASC
     `);
 
@@ -124,7 +124,7 @@ export async function syncPostgresToSqlite(): Promise<void> {
                a.verified_by_user_id
         FROM attendance_records a
         WHERE a.student_id LIKE 'std-real-%'
-           OR a.student_id IN (SELECT id FROM students WHERE id LIKE 'std-real-%')
+           OR a.student_id IN (SELECT id FROM students WHERE id LIKE 'std-real-%' OR NOT (roll_number LIKE 'TAGORE-%' OR id LIKE 'std-0%'))
         ORDER BY a.timestamp DESC
         LIMIT 5000
       `);
