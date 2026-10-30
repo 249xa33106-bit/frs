@@ -357,7 +357,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({ onNavigate }
               <span>Campus Safety Notice</span>
             </div>
             <p className="text-[11px] text-slate-600">
-              Attendance requires physical presence within the Tagore Hostel geofence (250m radius). Automated return-overdue alerts will notify the warden office if return deadlines are exceeded.
+              Attendance strictly requires physical presence within the hostel premises (Q1-Q4 4-corner geofence boundary). Face ID capture is only permitted inside the hostel grounds. Automated return-overdue alerts will notify the warden office if return deadlines are exceeded.
             </p>
           </div>
         </div>

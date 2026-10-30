@@ -1,7 +1,13 @@
 import { Router } from 'express';
 import { db } from '../db.js';
 import { AuthenticatedRequest, authenticateToken, requireRole } from '../middleware/auth.js';
-import { calculateDistanceMeters } from '../utils/geo.js';
+import {
+  calculateDistanceMeters,
+  verifyHostelGeofence,
+  HOSTEL_CENTROID,
+  HOSTEL_BOUNDARY_POLYGON,
+  HOSTEL_GEOFENCE_RADIUS_METERS
+} from '../utils/geo.js';
 import { verifyFaceBiometrics, detectFaceBiometrics } from '../utils/faceClient.js';
 
 export const studentRouter = Router();
@@ -82,9 +88,10 @@ studentRouter.get('/dashboard', (req: AuthenticatedRequest, res) => {
     notifications,
     settings: {
       curfewTime: curfewSetting ? curfewSetting.value : '21:30',
-      geofenceRadius: radiusSetting ? parseInt(radiusSetting.value, 10) : 250,
-      hostelLat: student.hostel_lat || 28.5450,
-      hostelLng: student.hostel_lng || 77.1926
+      geofenceRadius: radiusSetting ? parseInt(radiusSetting.value, 10) : HOSTEL_GEOFENCE_RADIUS_METERS,
+      hostelLat: student.hostel_lat || HOSTEL_CENTROID.lat,
+      hostelLng: student.hostel_lng || HOSTEL_CENTROID.lng,
+      geofencePolygon: HOSTEL_BOUNDARY_POLYGON
     }
   });
 });
@@ -133,20 +140,20 @@ studentRouter.post('/attendance', async (req: AuthenticatedRequest, res) => {
       });
     }
 
-    // 3. Location / Geofence Verification
-    const hostelLat = student.hostel_lat || 28.5450;
-    const hostelLng = student.hostel_lng || 77.1926;
-    const maxRadius = student.geofence_radius_meters || 250;
+    // 3. Strict 4-Corner Polygon Geofence Verification
+    const maxRadius = student.geofence_radius_meters || HOSTEL_GEOFENCE_RADIUS_METERS;
 
     let distanceMeters = 0;
     let locationVerified = 1;
     let locationError: string | null = null;
 
     if (latitude !== undefined && longitude !== undefined && latitude !== null && longitude !== null) {
-      distanceMeters = calculateDistanceMeters(Number(latitude), Number(longitude), hostelLat, hostelLng);
-      if (distanceMeters > maxRadius) {
+      const geoCheck = verifyHostelGeofence(Number(latitude), Number(longitude), maxRadius);
+      distanceMeters = geoCheck.distanceMeters;
+
+      if (!geoCheck.isInside) {
         locationVerified = 0;
-        locationError = `Outside Hostel Geofence: Attendance capture is strictly restricted to hostel grounds. You are currently ${distanceMeters}m away from the campus perimeter (Allowed zone: ${maxRadius}m).`;
+        locationError = geoCheck.reason || `Outside Hostel Geofence: Attendance capture is strictly restricted to hostel grounds. You are currently ${distanceMeters}m away from the campus perimeter.`;
       }
     } else {
       // If location unavailable in browser, record as unverified location

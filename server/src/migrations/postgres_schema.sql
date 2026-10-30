@@ -9,9 +9,9 @@ CREATE TABLE IF NOT EXISTS hostels (
     name VARCHAR(255) NOT NULL,
     code VARCHAR(64) NOT NULL UNIQUE,
     address TEXT,
-    latitude NUMERIC(10, 6) DEFAULT 28.545000,
-    longitude NUMERIC(10, 6) DEFAULT 77.192600,
-    geofence_radius_meters INTEGER DEFAULT 250,
+    latitude NUMERIC(10, 6) DEFAULT 15.774299,
+    longitude NUMERIC(10, 6) DEFAULT 78.054718,
+    geofence_radius_meters INTEGER DEFAULT 35,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 

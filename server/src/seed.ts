@@ -63,9 +63,9 @@ export function seedData() {
     'Tagore Central Hostel Complex',
     'TCHC-01',
     'Campus North Wing, Knowledge Park, Academic City',
-    28.545000,
-    77.192600,
-    250
+    15.774299,
+    78.054718,
+    35
   );
 
   // 2. Create Blocks

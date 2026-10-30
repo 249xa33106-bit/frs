@@ -23,9 +23,9 @@ export function initDatabase() {
       name TEXT NOT NULL,
       code TEXT NOT NULL UNIQUE,
       address TEXT,
-      latitude REAL DEFAULT 28.5450,
-      longitude REAL DEFAULT 77.1926,
-      geofence_radius_meters INTEGER DEFAULT 200,
+      latitude REAL DEFAULT 15.774299,
+      longitude REAL DEFAULT 78.054718,
+      geofence_radius_meters INTEGER DEFAULT 35,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -231,9 +231,15 @@ export function initDatabase() {
   `);
 
   insertSetting.run('hostel_name', 'Tagore Central Hostel Complex', 'Full name of the hostel premises');
-  insertSetting.run('hostel_lat', '28.545000', 'Hostel Campus Central Latitude');
-  insertSetting.run('hostel_lng', '77.192600', 'Hostel Campus Central Longitude');
-  insertSetting.run('geofence_radius_meters', '250', 'Acceptable radius in meters for on-campus verification');
+  insertSetting.run('hostel_lat', '15.774299', 'Hostel Campus Central Latitude');
+  insertSetting.run('hostel_lng', '78.054718', 'Hostel Campus Central Longitude');
+  insertSetting.run('geofence_radius_meters', '35', 'Acceptable radius in meters for on-campus verification');
+  insertSetting.run('geofence_polygon', JSON.stringify([
+    { id: 'q1', lat: 15.774450196357801, lng: 78.05467113649686 },
+    { id: 'q2', lat: 15.774311503975998, lng: 78.05457367411404 },
+    { id: 'q3', lat: 15.774131902250424, lng: 78.0547841514271 },
+    { id: 'q4', lat: 15.774300528319552, lng: 78.05484117730008 }
+  ]), 'Exact 4-corner boundary coordinates (q1, q2, q3, q4)');
   insertSetting.run('attendance_curfew_time', '21:30', 'Daily attendance cutoff time (24h format HH:MM)');
   insertSetting.run('overdue_grace_minutes', '15', 'Grace minutes before an overdue exception is generated');
   insertSetting.run('face_match_threshold', '0.70', 'Minimum cosine similarity score required for face match');
@@ -242,8 +248,42 @@ export function initDatabase() {
 
   // Automatically guarantee campus architecture (Hostels, Blocks, Floors, 300 Rooms, Staff)
   ensureCampusInfrastructure();
+  applyAuthoritativeGeofence();
 
   console.log('Database initialized successfully with complete normalized schema and room infrastructure.');
+}
+
+export function applyAuthoritativeGeofence() {
+  const centroidLat = 15.774299;
+  const centroidLng = 78.054718;
+  const radiusMeters = 35;
+  const polygonStr = JSON.stringify([
+    { id: 'q1', lat: 15.774450196357801, lng: 78.05467113649686 },
+    { id: 'q2', lat: 15.774311503975998, lng: 78.05457367411404 },
+    { id: 'q3', lat: 15.774131902250424, lng: 78.0547841514271 },
+    { id: 'q4', lat: 15.774300528319552, lng: 78.05484117730008 }
+  ]);
+
+  try {
+    db.prepare(`
+      UPDATE hostels
+      SET latitude = ?, longitude = ?, geofence_radius_meters = ?
+      WHERE id = 'hostel-tagore-main'
+    `).run(centroidLat, centroidLng, radiusMeters);
+
+    const setStmt = db.prepare(`
+      INSERT INTO system_settings (key, value, description, updated_at)
+      VALUES (?, ?, ?, datetime('now'))
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')
+    `);
+
+    setStmt.run('hostel_lat', String(centroidLat), 'Hostel Campus Central Latitude');
+    setStmt.run('hostel_lng', String(centroidLng), 'Hostel Campus Central Longitude');
+    setStmt.run('geofence_radius_meters', String(radiusMeters), 'Acceptable radius in meters for on-campus verification');
+    setStmt.run('geofence_polygon', polygonStr, 'Exact 4-corner boundary coordinates (q1, q2, q3, q4)');
+  } catch (err: any) {
+    console.warn('[DB Geofence Note]', err.message);
+  }
 }
 
 export function ensureCampusInfrastructure() {
@@ -263,9 +303,9 @@ export function ensureCampusInfrastructure() {
     'Tagore Central Hostel Complex',
     'TCHC-01',
     'Campus North Wing, Knowledge Park, Academic City',
-    28.545000,
-    77.192600,
-    250
+    15.774299,
+    78.054718,
+    35
   );
 
   const blocksData = [
@@ -324,3 +364,6 @@ export function ensureCampusInfrastructure() {
 
   console.log('[Campus Init] 1 Hostel, 3 Blocks, 12 Floors, 300 Rooms, and Core Staff successfully auto-provisioned.');
 }
+
+// Immediately apply authoritative 4-corner coordinates on database load
+applyAuthoritativeGeofence();

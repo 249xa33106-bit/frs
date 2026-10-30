@@ -18,7 +18,7 @@ import { adminRouter } from './routes/admin.js';
 import fs from 'fs';
 import { runExceptionDetectionJob } from './services/exceptionEngine.js';
 import { checkFastAPIFaceService } from './utils/faceClient.js';
-import { testPostgresConnection, initPostgresSchema, syncSqliteToPostgres, configurePgPool } from './postgres.js';
+import { testPostgresConnection, initPostgresSchema, syncSqliteToPostgres, configurePgPool, safePgQuery } from './postgres.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -33,6 +33,28 @@ app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 
 // Initialize SQLite database
 initDatabase();
+
+// Mirror authoritative 4-corner geofence coordinates to PostgreSQL
+safePgQuery(`
+  UPDATE hostels
+  SET latitude = 15.774299, longitude = 78.054718, geofence_radius_meters = 35
+  WHERE id = 'hostel-tagore-main'
+`);
+safePgQuery(`
+  INSERT INTO system_settings (key, value, description)
+  VALUES ('hostel_lat', '15.774299', 'Hostel Campus Central Latitude')
+  ON CONFLICT (key) DO UPDATE SET value = '15.774299'
+`);
+safePgQuery(`
+  INSERT INTO system_settings (key, value, description)
+  VALUES ('hostel_lng', '78.054718', 'Hostel Campus Central Longitude')
+  ON CONFLICT (key) DO UPDATE SET value = '78.054718'
+`);
+safePgQuery(`
+  INSERT INTO system_settings (key, value, description)
+  VALUES ('geofence_radius_meters', '35', 'Acceptable radius in meters for on-campus verification')
+  ON CONFLICT (key) DO UPDATE SET value = '35'
+`);
 
 // API Routes
 app.use('/api/auth', authRouter);

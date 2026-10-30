@@ -1,22 +1,14 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { Camera, CheckCircle2, AlertOctagon, RefreshCw, MapPin, ShieldCheck, Eye, Sparkles, Navigation, AlertTriangle, ShieldAlert } from 'lucide-react';
 import { api } from '../../services/api';
-
-// Great-circle Haversine distance calculator in meters
-function calculateDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 6371e3; // Earth's radius in meters
-  const phi1 = (lat1 * Math.PI) / 180;
-  const phi2 = (lat2 * Math.PI) / 180;
-  const deltaPhi = ((lat2 - lat1) * Math.PI) / 180;
-  const deltaLambda = ((lon2 - lon1) * Math.PI) / 180;
-
-  const a =
-    Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
-    Math.cos(phi1) * Math.cos(phi2) * Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-  return Math.round(R * c);
-}
+import {
+  HOSTEL_BOUNDARY_POLYGON,
+  HOSTEL_CENTROID,
+  HOSTEL_DEFAULT_RADIUS,
+  calculateDistanceMeters,
+  isPointInPolygon,
+  getDistanceToHostelPolygon
+} from '../../utils/geo';
 
 interface CameraCaptureProps {
   onSuccess: (result: any) => void;
@@ -45,9 +37,9 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({
     radius: number;
     hostelName: string;
   }>({
-    lat: propLat || 28.5450,
-    lng: propLng || 77.1926,
-    radius: propRadius || 250,
+    lat: propLat || HOSTEL_CENTROID.lat,
+    lng: propLng || HOSTEL_CENTROID.lng,
+    radius: propRadius || HOSTEL_DEFAULT_RADIUS,
     hostelName: 'Hostel Campus'
   });
 
@@ -81,9 +73,9 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({
       const res = await api.get('/student/dashboard');
       if (res?.settings) {
         setHostelGeofence({
-          lat: Number(res.settings.hostelLat || 28.5450),
-          lng: Number(res.settings.hostelLng || 77.1926),
-          radius: Number(res.settings.geofenceRadius || 250),
+          lat: Number(res.settings.hostelLat || HOSTEL_CENTROID.lat),
+          lng: Number(res.settings.hostelLng || HOSTEL_CENTROID.lng),
+          radius: Number(res.settings.geofenceRadius || HOSTEL_DEFAULT_RADIUS),
           hostelName: res.student?.hostel_name || 'Tagore Central Hostel Complex'
         });
       }
@@ -122,9 +114,9 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({
         const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
         if (isLocal) {
           setLocationState({
-            lat: 28.5451,
-            lng: 77.1925,
-            accuracy: 15,
+            lat: HOSTEL_CENTROID.lat,
+            lng: HOSTEL_CENTROID.lng,
+            accuracy: 5,
             status: 'available'
           });
         } else {
@@ -192,14 +184,20 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({
     };
   }, []);
 
-  // Compute live distance & geofence status
+  // Compute live distance & 4-corner polygon geofence status
+  const isInsidePolygon =
+    locationState.lat !== null && locationState.lng !== null
+      ? isPointInPolygon(locationState.lat, locationState.lng, HOSTEL_BOUNDARY_POLYGON)
+      : false;
+
   const currentDistance =
     locationState.lat !== null && locationState.lng !== null
-      ? calculateDistanceMeters(locationState.lat, locationState.lng, hostelGeofence.lat, hostelGeofence.lng)
+      ? (isInsidePolygon ? 0 : getDistanceToHostelPolygon(locationState.lat, locationState.lng, HOSTEL_BOUNDARY_POLYGON))
       : null;
 
-  const isInsideGeofence = currentDistance !== null ? currentDistance <= hostelGeofence.radius : false;
-  const isOutsideGeofence = currentDistance !== null ? currentDistance > hostelGeofence.radius : false;
+  // Student is inside if in polygon or within 15 meters indoor GPS drift buffer
+  const isInsideGeofence = isInsidePolygon || (currentDistance !== null && currentDistance <= 15);
+  const isOutsideGeofence = currentDistance !== null && !isInsideGeofence;
 
   // Handle Capture and Submit Attendance
   const captureAndVerify = async () => {
@@ -207,7 +205,7 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({
     if (isOutsideGeofence) {
       setFeedback({
         type: 'error',
-        message: `Strict Geofence Enforced: You are outside the hostel perimeter (${currentDistance}m away, allowed zone: ${hostelGeofence.radius}m). Face ID capture is only permitted inside the hostel.`
+        message: `Strict Geofence Enforced: You are outside the hostel perimeter (${currentDistance}m away). Face ID capture is strictly authorized only when physically inside the hostel grounds (q1-q4 boundary).`
       });
       return;
     }
@@ -336,7 +334,7 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({
               Strict Geofence Enforced: Outside Hostel Grounds ({currentDistance}m away)
             </p>
             <p className="text-rose-800 text-[11px] leading-relaxed">
-              Attendance Face ID capture is strictly authorized only when physically inside the hostel perimeter (Within {hostelGeofence.radius}m). Face ID capture is currently locked.
+              Attendance Face ID capture is strictly authorized only when physically inside the hostel perimeter (Q1-Q4 quadrilateral boundary). Face ID capture is currently locked.
             </p>
           </div>
         </div>
@@ -364,10 +362,43 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({
         <div className="p-2.5 bg-emerald-50/80 border border-emerald-200 rounded-xl text-emerald-900 text-xs flex items-center gap-2 animate-in fade-in">
           <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
           <span className="font-semibold text-[11px]">
-            ✓ Physical Geofence Verified: You are inside hostel premises ({currentDistance}m from center). Face ID verification unlocked.
+            {isInsidePolygon
+              ? '✓ Physical Geofence Verified: You are inside the hostel building (4-Corner Verified). Face ID verification unlocked.'
+              : `✓ Physical Geofence Verified: You are within hostel grounds (${currentDistance}m from perimeter). Face ID verification unlocked.`}
           </span>
         </div>
       )}
+
+      {/* Strict 4-Corner Boundary Coordinates Reference */}
+      <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 space-y-1.5 text-[11px]">
+        <div className="flex items-center justify-between">
+          <span className="font-semibold text-slate-700 flex items-center gap-1.5">
+            <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
+            Strict Hostel Boundary (4 Coordinates):
+          </span>
+          <span className="text-[10px] font-bold text-blue-700 bg-blue-100/80 px-2 py-0.5 rounded-md">
+            Active Geofence
+          </span>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 font-mono text-[10px] text-slate-600">
+          <div className="bg-white p-1.5 rounded-lg border border-slate-200/80">
+            <span className="font-bold text-slate-900 block text-[9px] text-blue-600">Q1</span>
+            15.774450, 78.054671
+          </div>
+          <div className="bg-white p-1.5 rounded-lg border border-slate-200/80">
+            <span className="font-bold text-slate-900 block text-[9px] text-blue-600">Q2</span>
+            15.774312, 78.054574
+          </div>
+          <div className="bg-white p-1.5 rounded-lg border border-slate-200/80">
+            <span className="font-bold text-slate-900 block text-[9px] text-blue-600">Q3</span>
+            15.774132, 78.054784
+          </div>
+          <div className="bg-white p-1.5 rounded-lg border border-slate-200/80">
+            <span className="font-bold text-slate-900 block text-[9px] text-blue-600">Q4</span>
+            15.774301, 78.054841
+          </div>
+        </div>
+      </div>
 
       {/* Video Viewport Container */}
       <div className="relative rounded-2xl overflow-hidden bg-slate-900 aspect-4/3 flex items-center justify-center border-2 border-slate-200 shadow-inner">

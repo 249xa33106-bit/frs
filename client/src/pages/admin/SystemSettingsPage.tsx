@@ -5,9 +5,9 @@ import { api } from '../../services/api';
 export const SystemSettingsPage: React.FC = () => {
   const [settings, setSettings] = useState<Record<string, string>>({
     hostel_name: 'Tagore Central Hostel Complex',
-    hostel_lat: '28.545000',
-    hostel_lng: '77.192600',
-    geofence_radius_meters: '250',
+    hostel_lat: '15.774299',
+    hostel_lng: '78.054718',
+    geofence_radius_meters: '35',
     attendance_curfew_time: '21:30',
     overdue_grace_minutes: '15',
     face_match_threshold: '0.70',
@@ -410,7 +410,7 @@ export const SystemSettingsPage: React.FC = () => {
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
             <div>
-              <label className="block font-semibold text-slate-700 mb-1">Hostel Latitude</label>
+              <label className="block font-semibold text-slate-700 mb-1">Hostel Latitude (Center)</label>
               <input
                 type="text"
                 value={settings.hostel_lat}
@@ -419,7 +419,7 @@ export const SystemSettingsPage: React.FC = () => {
               />
             </div>
             <div>
-              <label className="block font-semibold text-slate-700 mb-1">Hostel Longitude</label>
+              <label className="block font-semibold text-slate-700 mb-1">Hostel Longitude (Center)</label>
               <input
                 type="text"
                 value={settings.hostel_lng}
@@ -435,6 +435,40 @@ export const SystemSettingsPage: React.FC = () => {
                 onChange={(e) => setSettings({ ...settings, geofence_radius_meters: e.target.value })}
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none"
               />
+            </div>
+          </div>
+
+          {/* Strict 4-Corner Quadrilateral Geofence Boundary */}
+          <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="font-semibold text-xs text-slate-800 flex items-center gap-1.5">
+                <Shield className="w-3.5 h-3.5 text-blue-600" />
+                Active Strict 4-Corner Boundary Coordinates (Quadrilateral Geofence)
+              </span>
+              <span className="text-[10px] bg-blue-100 text-blue-700 font-bold px-2 py-0.5 rounded-md">
+                Strict Perimeter Active
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-500">
+              Only mobile devices physically positioned inside this 4-corner polygon (or within immediate building threshold) can capture face biometrics.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 font-mono text-[11px]">
+              <div className="p-2 bg-white rounded-lg border border-slate-200">
+                <span className="font-bold text-blue-600 block text-[10px]">Q1 (Corner 1)</span>
+                <span>15.774450196357801, 78.05467113649686</span>
+              </div>
+              <div className="p-2 bg-white rounded-lg border border-slate-200">
+                <span className="font-bold text-blue-600 block text-[10px]">Q2 (Corner 2)</span>
+                <span>15.774311503975998, 78.05457367411404</span>
+              </div>
+              <div className="p-2 bg-white rounded-lg border border-slate-200">
+                <span className="font-bold text-blue-600 block text-[10px]">Q3 (Corner 3)</span>
+                <span>15.774131902250424, 78.0547841514271</span>
+              </div>
+              <div className="p-2 bg-white rounded-lg border border-slate-200">
+                <span className="font-bold text-blue-600 block text-[10px]">Q4 (Corner 4)</span>
+                <span>15.774300528319552, 78.05484117730008</span>
+              </div>
             </div>
           </div>
         </div>
