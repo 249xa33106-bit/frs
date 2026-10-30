@@ -19,6 +19,7 @@ import fs from 'fs';
 import { runExceptionDetectionJob } from './services/exceptionEngine.js';
 import { checkFastAPIFaceService } from './utils/faceClient.js';
 import { testPostgresConnection, initPostgresSchema, syncSqliteToPostgres, configurePgPool, safePgQuery } from './postgres.js';
+import { syncPostgresToSqlite } from './utils/pgSyncToSqlite.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -33,6 +34,11 @@ app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 
 // Initialize SQLite database
 initDatabase();
+
+// Sync registered students from Neon PostgreSQL into SQLite on startup (restores state across Render redeploys)
+syncPostgresToSqlite().catch(err => {
+  console.warn('[PG→SQLite Startup Sync] Failed:', err.message);
+});
 
 // Mirror authoritative 4-corner geofence coordinates to PostgreSQL
 safePgQuery(`
