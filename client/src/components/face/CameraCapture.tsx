@@ -281,12 +281,16 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({
     <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 shadow-xs max-w-xl mx-auto space-y-4">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-        <div>
-          <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
-            <Camera className="w-5 h-5 text-blue-600" />
-            Hostel Face ID Verification
-          </h3>
-          <p className="text-xs text-slate-500">Live camera capture strictly restricted to hostel campus grounds</p>
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-white border border-slate-200/90 p-0.5 shrink-0 flex items-center justify-center overflow-hidden shadow-xs">
+            <img src="/logo.png" alt="GPREC Logo" className="w-full h-full object-contain" />
+          </div>
+          <div>
+            <h3 className="font-bold text-slate-900 text-sm sm:text-base">
+              GPREC Face ID Attendance
+            </h3>
+            <p className="text-xs text-slate-500">Live biometric verification restricted to hostel grounds</p>
+          </div>
         </div>
 
         {/* Location Signal Pill & Refresh Button */}

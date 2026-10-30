@@ -64,13 +64,13 @@ export const StudentRegisterModal: React.FC<StudentRegisterModalProps> = ({ isOp
       <div className="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-xl w-full my-8 overflow-hidden">
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
-              <UserPlus className="w-5 h-5" />
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-xl bg-white border border-slate-200/90 p-1 flex items-center justify-center shrink-0 shadow-xs overflow-hidden">
+              <img src="/logo.png" alt="GPREC Logo" className="w-full h-full object-contain" />
             </div>
             <div>
-              <h3 className="font-bold text-slate-900 text-sm sm:text-base">Student Self-Registration</h3>
-              <p className="text-xs text-slate-500">Create your real student account to access the Hostel Safety Portal</p>
+              <h3 className="font-bold text-slate-900 text-sm sm:text-base">GPREC Resident Registration</h3>
+              <p className="text-xs text-slate-500">Official hostel resident intake & biometric credentials</p>
             </div>
           </div>
           <button

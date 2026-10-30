@@ -31,16 +31,21 @@ export const LoginPage: React.FC = () => {
     <div className="min-h-screen bg-[#F6F8FC] flex flex-col justify-center items-center px-4 py-12">
       <div className="w-full max-w-md space-y-6">
         {/* Brand Header */}
-        <div className="text-center space-y-2">
-          <div className="w-14 h-14 bg-blue-600 rounded-2xl text-white flex items-center justify-center mx-auto shadow-md shadow-blue-500/10">
-            <ShieldCheck className="w-8 h-8" />
+        <div className="text-center space-y-3">
+          <div className="w-20 h-20 bg-white rounded-2xl border border-slate-200/90 p-1.5 mx-auto shadow-sm flex items-center justify-center overflow-hidden">
+            <img src="/logo.png" alt="GPREC Logo" className="w-full h-full object-contain" />
           </div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-[#172033] tracking-tight">
-            Hostel Safety
-          </h1>
-          <p className="text-xs text-[#64748B] max-w-xs mx-auto">
-            Attendance & Student Movement Management System • 1,200 Residents
-          </p>
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-[#172033] tracking-tight">
+              Hostel Safety Portal
+            </h1>
+            <p className="text-xs text-blue-700 font-semibold tracking-wide uppercase mt-0.5">
+              G. Pulla Reddy Engineering College • Kurnool
+            </p>
+            <p className="text-[11px] text-[#64748B] mt-1 max-w-xs mx-auto">
+              Facial Biometric & Geofenced Attendance System
+            </p>
+          </div>
         </div>
 
         {/* Login Card */}

@@ -146,6 +146,16 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({ isOpen
         {/* STEP 1: Enter Gmail / Roll No */}
         {step === 'request' && (
           <form onSubmit={handleRequestOtp} className="space-y-4">
+            <div className="flex items-center gap-2.5 p-2 bg-slate-50 border border-slate-200/80 rounded-xl">
+              <div className="w-8 h-8 rounded-lg bg-white border border-slate-200 p-0.5 shrink-0 flex items-center justify-center overflow-hidden shadow-xs">
+                <img src="/logo.png" alt="GPREC Logo" className="w-full h-full object-contain" />
+              </div>
+              <div>
+                <p className="font-bold text-slate-800 text-[11px]">G. Pulla Reddy Engineering College</p>
+                <p className="text-[10px] text-slate-500">Kurnool • Student Access Recovery</p>
+              </div>
+            </div>
+
             <div>
               <label className="block font-semibold text-slate-700 mb-1">
                 Registered Gmail / Academic Email Address *

@@ -63,18 +63,18 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar, currentPageTitl
           </svg>
         </button>
 
-        <div className="flex items-center gap-2.5">
-          <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-xs">
-            <ShieldCheck className="w-6 h-6" />
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-white border border-slate-200/90 p-0.5 shadow-xs shrink-0 flex items-center justify-center overflow-hidden">
+            <img src="/logo.png" alt="GPREC Logo" className="w-full h-full object-contain" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="font-bold text-slate-900 tracking-tight text-base sm:text-lg">Hostel Safety</span>
-              <span className="hidden sm:inline-block text-[11px] font-semibold uppercase tracking-wider bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-full">
-                Enterprise
+              <span className="font-bold text-slate-900 tracking-tight text-base sm:text-lg">GPREC Hostel Safety</span>
+              <span className="hidden sm:inline-block text-[10px] font-semibold uppercase tracking-wider bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-full">
+                Official
               </span>
             </div>
-            <p className="hidden md:block text-[11px] text-slate-500 font-medium">Attendance & Movement System</p>
+            <p className="hidden md:block text-[11px] text-slate-500 font-medium">G. Pulla Reddy Engineering College • Kurnool</p>
           </div>
         </div>
 

@@ -124,12 +124,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         {/* Footer info in sidebar */}
-        <div className="p-3.5 border-t border-slate-100 bg-slate-50/50">
+        <div className="p-3 border-t border-slate-100 bg-slate-50/50">
           <div className="flex items-center gap-2.5">
-            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <div className="text-[11px] text-slate-500">
-              <span className="font-semibold text-slate-700">1,200 Students Active</span>
-              <p className="text-[10px]">Tagore Central Complex</p>
+            <div className="w-8 h-8 rounded-lg bg-white border border-slate-200/90 p-0.5 shrink-0 flex items-center justify-center overflow-hidden shadow-xs">
+              <img src="/logo.png" alt="GPREC Logo" className="w-full h-full object-contain" />
+            </div>
+            <div className="text-[11px] text-slate-500 min-w-0">
+              <span className="font-semibold text-slate-800 block truncate">GPREC Hostel Campus</span>
+              <p className="text-[10px] text-slate-400">Kurnool • Andhra Pradesh</p>
             </div>
           </div>
         </div>
