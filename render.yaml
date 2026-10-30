@@ -11,8 +11,12 @@ services:
         value: production
       - key: PORT
         value: 10000
+      - key: SUPABASE_URL
+        value: https://hubvdfqtqmtfmvczvacy.supabase.co
+      - key: SUPABASE_PUBLISHABLE_KEY
+        value: sb_publishable_eL_lMolq7KwFfAol4NIaAg_1pRF1zhc
       - key: DATABASE_URL
-        value: postgresql://neondb_owner:npg_eZlcz7ykiS0j@ep-jolly-union-b521wogh-pooler.c-7.us-east-2.aws.neon.tech/neondb?sslmode=require
+        value: postgresql://postgres:Shaik%40%232006%21@db.hubvdfqtqmtfmvczvacy.supabase.co:5432/postgres
       - key: DATABASE_TYPE
         value: postgres
       - key: JWT_SECRET
