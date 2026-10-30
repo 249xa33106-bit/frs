@@ -4,6 +4,7 @@ import { db, ensureCampusInfrastructure } from '../db.js';
 import { generateToken, authenticateToken, AuthenticatedRequest } from '../middleware/auth.js';
 import { detectFaceBiometrics } from '../utils/faceClient.js';
 import { safePgQuery } from '../postgres.js';
+import { sendPasswordResetEmail } from '../utils/emailService.js';
 
 export const authRouter = Router();
 
@@ -109,87 +110,102 @@ authRouter.get('/me', authenticateToken, (req: AuthenticatedRequest, res) => {
   });
 });
 
-// In-memory cache for Phone OTP Password Reset (Valid for 10 minutes)
+// In-memory cache for Gmail OTP Password Reset (Valid for 10 minutes)
 interface OtpRecord {
   otp: string;
   expiresAt: number;
   userId: string;
   identifier: string;
-  phone: string;
+  email: string;
+  phone?: string;
 }
 const passwordResetOtpMap = new Map<string, OtpRecord>();
 
-// 1. Request Phone OTP for Password Reset
-authRouter.post('/forgot-password-otp', (req, res) => {
+// 1. Request Gmail OTP for Password Reset
+authRouter.post('/forgot-password-otp', async (req, res) => {
   const { identifier } = req.body;
   if (!identifier || typeof identifier !== 'string' || !identifier.trim()) {
-    return res.status(400).json({ error: 'Please enter your registered mobile number, roll number, or academic email.' });
+    return res.status(400).json({ error: 'Please enter your registered Gmail or academic email address, or roll number.' });
   }
 
   const clean = identifier.trim();
   const cleanPhone = clean.replace(/[^0-9]/g, '');
 
-  // Look up user by phone number, student phone, roll number, username, or email
+  // Look up user by email, roll number, username, or phone
   const user = db.prepare(`
-    SELECT u.id, u.username, u.email, u.full_name, u.phone, s.phone as student_phone, s.roll_number
+    SELECT u.id, u.username, u.email, u.full_name, u.phone, s.phone as student_phone, s.roll_number, s.email as student_email
     FROM users u
     LEFT JOIN students s ON u.id = s.user_id
-    WHERE u.phone = ? 
-       OR s.phone = ?
-       OR (LENGTH(?) >= 10 AND (REPLACE(u.phone, ' ', '') LIKE '%' || ? OR REPLACE(s.phone, ' ', '') LIKE '%' || ?))
+    WHERE LOWER(u.email) = LOWER(?)
+       OR LOWER(s.email) = LOWER(?)
        OR UPPER(u.username) = UPPER(?)
        OR UPPER(s.roll_number) = UPPER(?)
-       OR LOWER(u.email) = LOWER(?)
+       OR u.phone = ? 
+       OR s.phone = ?
+       OR (LENGTH(?) >= 10 AND (REPLACE(u.phone, ' ', '') LIKE '%' || ? OR REPLACE(s.phone, ' ', '') LIKE '%' || ?))
     LIMIT 1
-  `).get(clean, clean, cleanPhone, cleanPhone.slice(-10), cleanPhone.slice(-10), clean, clean, clean) as any;
+  `).get(clean, clean, clean, clean, clean, clean, cleanPhone, cleanPhone.slice(-10), cleanPhone.slice(-10)) as any;
 
   if (!user) {
     return res.status(404).json({
-      error: 'Account not found. No registered student or staff account matches this phone number, roll number, or email.'
+      error: 'Account not found. No registered student or staff account matches this Gmail address, roll number, or username.'
     });
   }
 
-  const registeredPhone = user.phone || user.student_phone || clean;
+  const targetEmail = user.email || user.student_email;
+  if (!targetEmail) {
+    return res.status(400).json({ error: 'No email address registered for this account.' });
+  }
+
   // Generate a random 6-digit OTP
   const otp = Math.floor(100000 + Math.random() * 900000).toString();
   const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes
 
-  // Store in cache indexed by user.id and clean input
+  // Store in cache indexed by user.id and clean input and email
   const record: OtpRecord = {
     otp,
     expiresAt,
     userId: user.id,
     identifier: clean,
-    phone: registeredPhone
+    email: targetEmail,
+    phone: user.phone || user.student_phone
   };
   passwordResetOtpMap.set(user.id, record);
   passwordResetOtpMap.set(clean.toLowerCase(), record);
-  if (cleanPhone.length >= 10) {
-    passwordResetOtpMap.set(cleanPhone.slice(-10), record);
-  }
+  passwordResetOtpMap.set(targetEmail.toLowerCase(), record);
+
+  // Send real password reset email via Gmail / SMTP transporter
+  await sendPasswordResetEmail({
+    toEmail: targetEmail,
+    recipientName: user.full_name || user.username,
+    otp,
+    expiresInMinutes: 10
+  });
 
   // Audit log
   db.prepare(`
     INSERT INTO audit_logs (id, user_id, action, target_type, target_id, details)
-    VALUES (?, ?, 'PASSWORD_RESET_OTP_REQUESTED', 'users', ?, ?)
+    VALUES (?, ?, 'PASSWORD_RESET_EMAIL_REQUESTED', 'users', ?, ?)
   `).run(
     `aud-otp-${Date.now()}`,
     user.id,
     user.id,
-    `Password reset OTP dispatched to registered phone: ${registeredPhone}`
+    `Password reset verification code emailed to Gmail: ${targetEmail}`
   );
 
-  // Mask phone for user privacy (e.g., +91 98•••• 3210)
-  const phoneDigits = registeredPhone.replace(/[^0-9]/g, '');
-  const maskedPhone = phoneDigits.length >= 10
-    ? `+91 ${phoneDigits.slice(-10, -7)}••••${phoneDigits.slice(-3)}`
-    : registeredPhone;
+  // Mask email for user privacy (e.g., s•••••••@gmail.com)
+  const [localPart, domainPart] = targetEmail.split('@');
+  const maskedLocal = localPart.length <= 2
+    ? localPart[0] + '•••'
+    : localPart[0] + '•'.repeat(Math.max(3, localPart.length - 2)) + localPart.slice(-1);
+  const maskedEmail = `${maskedLocal}@${domainPart || 'gmail.com'}`;
 
   res.json({
     success: true,
-    message: `OTP sent successfully to your registered mobile (${maskedPhone}).`,
-    phone: maskedPhone,
-    otp, // Returned for instant testing and displayed simulated SMS banner in student UI
+    message: `Password reset verification code sent to your Gmail (${maskedEmail}). Please check your inbox and spam folder.`,
+    email: maskedEmail,
+    fullEmail: targetEmail,
+    otp, // Returned for instant testing and displayed simulated inbox banner in student UI
     userId: user.id,
     expiresInMinutes: 10
   });
@@ -200,7 +216,7 @@ authRouter.post('/reset-password-otp', (req, res) => {
   const { identifier, userId, otp, newPassword } = req.body;
 
   if (!otp || typeof otp !== 'string' || otp.trim().length !== 6) {
-    return res.status(400).json({ error: 'Please enter the 6-digit OTP sent to your registered phone.' });
+    return res.status(400).json({ error: 'Please enter the 6-digit verification code sent to your Gmail inbox.' });
   }
 
   if (!newPassword || typeof newPassword !== 'string' || newPassword.length < 6) {
@@ -257,7 +273,7 @@ authRouter.post('/reset-password-otp', (req, res) => {
     `aud-pwd-ok-${Date.now()}`,
     record.userId,
     record.userId,
-    `Password successfully reset via Phone OTP for user ID: ${record.userId}`
+    `Password successfully reset via Gmail verification for user ID: ${record.userId}`
   );
 
   res.json({
@@ -267,23 +283,33 @@ authRouter.post('/reset-password-otp', (req, res) => {
 });
 
 // Legacy / fallback endpoint for email reset
-authRouter.post('/forgot-password', (req, res) => {
+authRouter.post('/forgot-password', async (req, res) => {
   const { email } = req.body;
   if (!email) {
-    return res.status(400).json({ error: 'Email address or mobile phone is required' });
+    return res.status(400).json({ error: 'Gmail address or academic email is required' });
   }
 
-  const user = db.prepare('SELECT id, full_name, phone FROM users WHERE email = ? OR phone = ?').get(email, email) as any;
-  if (!user) {
-    return res.json({
-      success: true,
-      message: 'If an account exists with this credential, reset instructions and OTP have been dispatched.'
+  const user = db.prepare('SELECT id, full_name, email, phone FROM users WHERE LOWER(email) = LOWER(?)').get(email) as any;
+  if (user) {
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = Date.now() + 10 * 60 * 1000;
+    passwordResetOtpMap.set(user.id, {
+      otp,
+      expiresAt,
+      userId: user.id,
+      identifier: email,
+      email: user.email
+    });
+    await sendPasswordResetEmail({
+      toEmail: user.email,
+      recipientName: user.full_name,
+      otp
     });
   }
 
   res.json({
     success: true,
-    message: 'Password reset OTP has been dispatched to your registered phone number.'
+    message: 'If an account exists with this Gmail address, password reset instructions and OTP have been dispatched to your inbox.'
   });
 });
 

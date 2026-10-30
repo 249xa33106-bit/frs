@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Phone, CheckCircle2, AlertCircle, KeyRound, Lock, Eye, EyeOff, ArrowLeft, RefreshCw, Smartphone } from 'lucide-react';
+import { Mail, MailCheck, CheckCircle2, AlertCircle, KeyRound, Lock, Eye, EyeOff, ArrowLeft, RefreshCw, ShieldCheck } from 'lucide-react';
 import { api } from '../../services/api';
 import { Modal } from '../../components/common/Modal';
 
@@ -12,7 +12,7 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({ isOpen
   const [step, setStep] = useState<'request' | 'verify' | 'success'>('request');
   const [identifier, setIdentifier] = useState('');
   const [userId, setUserId] = useState('');
-  const [maskedPhone, setMaskedPhone] = useState('');
+  const [maskedEmail, setMaskedEmail] = useState('');
   const [demoOtp, setDemoOtp] = useState<string | null>(null);
 
   const [otp, setOtp] = useState('');
@@ -29,7 +29,7 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({ isOpen
     setStep('request');
     setIdentifier('');
     setUserId('');
-    setMaskedPhone('');
+    setMaskedEmail('');
     setDemoOtp(null);
     setOtp('');
     setNewPassword('');
@@ -43,11 +43,11 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({ isOpen
     onClose();
   };
 
-  // Step 1: Request OTP
+  // Step 1: Request Password Reset OTP via Gmail
   const handleRequestOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!identifier.trim()) {
-      setError('Please enter your registered phone number, roll number, or academic email.');
+      setError('Please enter your registered Gmail address or Roll Number.');
       return;
     }
 
@@ -57,7 +57,7 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({ isOpen
       const res = await api.post('/auth/forgot-password-otp', { identifier: identifier.trim() });
       if (res.success) {
         setUserId(res.userId || '');
-        setMaskedPhone(res.phone || identifier);
+        setMaskedEmail(res.email || identifier);
         setDemoOtp(res.otp || null);
         if (res.otp) {
           // Pre-populate for convenience, user can also type it
@@ -65,10 +65,10 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({ isOpen
         }
         setStep('verify');
       } else {
-        setError(res.error || 'Failed to dispatch OTP.');
+        setError(res.error || 'Failed to dispatch verification email.');
       }
     } catch (err: any) {
-      setError(err.message || 'Could not find an account with that information.');
+      setError(err.message || 'Could not find an account with that email address or roll number.');
     } finally {
       setSubmitting(false);
     }
@@ -80,7 +80,7 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({ isOpen
     setError(null);
 
     if (otp.trim().length !== 6) {
-      setError('Please enter the complete 6-digit OTP code.');
+      setError('Please enter the complete 6-digit verification code sent to your Gmail.');
       return;
     }
 
@@ -110,7 +110,7 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({ isOpen
         setError(res.error || 'Failed to reset password.');
       }
     } catch (err: any) {
-      setError(err.message || 'Invalid OTP code or password reset failed.');
+      setError(err.message || 'Invalid verification code or password reset failed.');
     } finally {
       setSubmitting(false);
     }
@@ -122,16 +122,16 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({ isOpen
       onClose={handleClose}
       title={
         step === 'request'
-          ? 'Reset Password via Phone OTP'
+          ? 'Reset Password via Gmail'
           : step === 'verify'
-          ? 'Enter OTP & Set New Password'
+          ? 'Enter Gmail Verification Code'
           : 'Password Reset Successful'
       }
       subtitle={
         step === 'request'
-          ? 'Enter your registered mobile number or roll number to receive a 6-digit verification code'
+          ? 'Enter your registered Gmail or academic email address to receive a 6-digit verification OTP'
           : step === 'verify'
-          ? `Verification OTP sent to ${maskedPhone || 'your registered mobile phone'}`
+          ? `Verification code dispatched to your Gmail inbox (${maskedEmail || 'registered email'})`
           : 'Your account credentials have been updated securely'
       }
     >
@@ -143,18 +143,18 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({ isOpen
           </div>
         )}
 
-        {/* STEP 1: Enter Phone / Roll No */}
+        {/* STEP 1: Enter Gmail / Roll No */}
         {step === 'request' && (
           <form onSubmit={handleRequestOtp} className="space-y-4">
             <div>
               <label className="block font-semibold text-slate-700 mb-1">
-                Registered Mobile Number / Roll Number *
+                Registered Gmail / Academic Email Address *
               </label>
               <div className="relative">
-                <Smartphone className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
                 <input
                   type="text"
-                  placeholder="e.g. +91 98765 43210 or 24BCSE102"
+                  placeholder="e.g. yourname@gmail.com or 2024CS1001"
                   value={identifier}
                   onChange={(e) => setIdentifier(e.target.value)}
                   required
@@ -162,8 +162,9 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({ isOpen
                   className="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
                 />
               </div>
-              <p className="text-[11px] text-slate-500 mt-1.5">
-                We will dispatch an SMS with a 6-digit one-time code to the registered contact number.
+              <p className="text-[11px] text-slate-500 mt-1.5 flex items-center gap-1.5">
+                <ShieldCheck className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                We will send a 6-digit verification code directly to your registered Gmail address.
               </p>
             </div>
 
@@ -183,12 +184,12 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({ isOpen
                 {submitting ? (
                   <>
                     <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                    <span>Sending OTP...</span>
+                    <span>Sending to Gmail...</span>
                   </>
                 ) : (
                   <>
-                    <Phone className="w-3.5 h-3.5" />
-                    <span>Send Verification OTP</span>
+                    <Mail className="w-3.5 h-3.5" />
+                    <span>Send Reset Code to Gmail</span>
                   </>
                 )}
               </button>
@@ -199,27 +200,33 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({ isOpen
         {/* STEP 2: Enter OTP & Set New Password */}
         {step === 'verify' && (
           <form onSubmit={handleResetPassword} className="space-y-4">
-            {/* Simulated Live SMS Banner */}
-            {demoOtp && (
-              <div className="p-3 bg-blue-50/80 border border-blue-200 text-blue-900 rounded-xl space-y-1.5 animate-in fade-in">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold flex items-center gap-1.5 text-xs text-blue-800">
-                    <Smartphone className="w-4 h-4 text-blue-600" />
-                    SMS Notification Received
-                  </span>
-                  <span className="text-[10px] bg-blue-200/80 text-blue-800 px-2 py-0.5 rounded-full font-semibold">
-                    Simulated SMS
+            {/* Live Gmail Dispatch Notice */}
+            <div className="p-3 bg-blue-50/80 border border-blue-200 text-blue-900 rounded-xl space-y-1 animate-in fade-in">
+              <div className="flex items-center justify-between">
+                <span className="font-bold flex items-center gap-1.5 text-xs text-blue-800">
+                  <MailCheck className="w-4 h-4 text-blue-600" />
+                  Gmail Email Dispatched
+                </span>
+                <span className="text-[10px] bg-blue-200/80 text-blue-800 px-2 py-0.5 rounded-full font-semibold">
+                  Inbox Sent
+                </span>
+              </div>
+              <p className="text-[11px] text-blue-800">
+                A 6-digit password reset code was sent to <strong>{maskedEmail}</strong>. Please check your inbox and Spam / Promotions folder.
+              </p>
+              {demoOtp && (
+                <div className="pt-1 mt-1 border-t border-blue-200/60 flex items-center justify-between text-[11px]">
+                  <span className="text-slate-600">Verification Code:</span>
+                  <span className="font-mono text-xs font-bold text-blue-950 bg-white px-2 py-0.5 rounded border border-blue-300">
+                    {demoOtp}
                   </span>
                 </div>
-                <p className="text-[11px] text-blue-700">
-                  Hostel Safety OTP: <strong className="font-mono text-xs tracking-wider text-blue-950 font-bold bg-white px-2 py-0.5 rounded border border-blue-300">{demoOtp}</strong> (Valid for 10 min).
-                </p>
-              </div>
-            )}
+              )}
+            </div>
 
             <div>
               <label className="block font-semibold text-slate-700 mb-1">
-                Enter 6-Digit Phone OTP *
+                Enter 6-Digit Gmail Verification Code *
               </label>
               <div className="relative">
                 <KeyRound className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
@@ -291,7 +298,7 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({ isOpen
                 className="px-3 py-2 text-slate-600 hover:text-slate-800 text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
               >
                 <ArrowLeft className="w-3.5 h-3.5" />
-                <span>Change Mobile</span>
+                <span>Change Email</span>
               </button>
               <div className="flex gap-2">
                 <button
@@ -332,7 +339,7 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({ isOpen
             <div>
               <h4 className="font-bold text-slate-900 text-sm sm:text-base">Password Updated Successfully!</h4>
               <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-                {successMsg || 'Your new password is now active. You can now log into your account using your credentials.'}
+                {successMsg || 'Your new password is now active. You can now log into your account using your updated credentials.'}
               </p>
             </div>
             <button
