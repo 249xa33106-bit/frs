@@ -153,7 +153,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar, currentPageTitl
           </div>
           <div className="hidden lg:block text-left">
             <p className="text-xs font-semibold text-slate-900 leading-tight">{user?.full_name}</p>
-            <p className="text-[11px] text-slate-500 capitalize">{student ? `Room ${student.room_number}` : user?.role}</p>
+            <p className="text-[11px] text-slate-500 capitalize">{student ? 'Student' : user?.role}</p>
           </div>
           <button
             onClick={logout}

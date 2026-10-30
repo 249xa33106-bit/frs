@@ -93,8 +93,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({ onNavigate }
                 {getStatusBadge(currentStatus)}
               </div>
               <p className="text-xs text-slate-500 mt-1">
-                Roll No: <span className="font-semibold text-slate-700">{student?.roll_number}</span> • Room:{' '}
-                <span className="font-semibold text-slate-700">{student?.room_number}</span> ({student?.block_name})
+                Roll No: <span className="font-semibold text-slate-700">{student?.roll_number}</span>
               </p>
             </div>
           </div>
