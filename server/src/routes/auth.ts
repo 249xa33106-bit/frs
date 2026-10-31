@@ -5,11 +5,12 @@ import { generateToken, authenticateToken, AuthenticatedRequest } from '../middl
 import { detectFaceBiometrics } from '../utils/faceClient.js';
 import { safePgQuery } from '../postgres.js';
 import { sendPasswordResetEmail } from '../utils/emailService.js';
+import { supabase } from '../supabase.js';
 
 export const authRouter = Router();
 
 // Login
-authRouter.post('/login', (req, res) => {
+authRouter.post('/login', async (req, res) => {
   const { username, password } = req.body;
 
   if (!username || !password) {
@@ -17,12 +18,60 @@ authRouter.post('/login', (req, res) => {
   }
 
   const cleanInput = username.trim();
-  const user = db.prepare(`
+  let user = db.prepare(`
     SELECT u.* FROM users u
     LEFT JOIN students s ON s.user_id = u.id
     WHERE u.username = ? OR u.email = ? OR UPPER(s.roll_number) = ?
     LIMIT 1
   `).get(cleanInput, cleanInput.toLowerCase(), cleanInput.toUpperCase()) as any;
+
+  // Supabase Cloud fallback if user not yet cached in local SQLite
+  if (!user) {
+    try {
+      const { data: supaUsers } = await supabase
+        .from('users')
+        .select('*')
+        .or(`username.ilike.${cleanInput},email.ilike.${cleanInput}`)
+        .limit(1);
+
+      if (supaUsers && supaUsers.length > 0) {
+        user = supaUsers[0];
+      } else {
+        const { data: supaStudents } = await supabase
+          .from('students')
+          .select('id, user_id, roll_number')
+          .ilike('roll_number', cleanInput)
+          .limit(1);
+
+        if (supaStudents && supaStudents.length > 0 && supaStudents[0].user_id) {
+          const { data: matchedUsers } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', supaStudents[0].user_id)
+            .limit(1);
+          if (matchedUsers && matchedUsers.length > 0) {
+            user = matchedUsers[0];
+          }
+        }
+      }
+
+      // Cache user to local SQLite
+      if (user) {
+        try {
+          db.prepare(`
+            INSERT INTO users (id, username, email, password_hash, role, full_name, phone, avatar_url, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(username) DO UPDATE SET
+              id = excluded.id,
+              password_hash = excluded.password_hash,
+              full_name = excluded.full_name
+          `).run(user.id, user.username, user.email, user.password_hash, user.role, user.full_name, user.phone, user.avatar_url, user.status || 'Active');
+        } catch (e) {}
+      }
+    } catch (e) {
+      console.warn('[Supabase Auth Fallback Warning]', e);
+    }
+  }
 
   if (!user) {
     return res.status(401).json({ error: 'Invalid username/email or password' });

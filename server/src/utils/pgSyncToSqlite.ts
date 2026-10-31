@@ -23,16 +23,26 @@ async function syncViaSupabaseClient(): Promise<void> {
     const insertUser = sqliteDb.prepare(`
       INSERT INTO users (id, username, email, password_hash, role, full_name, phone, avatar_url, status)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET
-        username = excluded.username,
+      ON CONFLICT(username) DO UPDATE SET
+        id = excluded.id,
         email = excluded.email,
+        password_hash = excluded.password_hash,
         full_name = excluded.full_name,
         phone = excluded.phone,
         avatar_url = COALESCE(excluded.avatar_url, users.avatar_url),
         status = excluded.status
     `);
     for (const u of users) {
-      insertUser.run(u.id, u.username, u.email, u.password_hash, u.role, u.full_name, u.phone, u.avatar_url, u.status || 'Active');
+      try {
+        insertUser.run(u.id, u.username, u.email, u.password_hash, u.role, u.full_name, u.phone, u.avatar_url, u.status || 'Active');
+      } catch (e: any) {
+        try {
+          sqliteDb.prepare(`
+            UPDATE users SET id = ?, password_hash = ?, full_name = ?, phone = ?, avatar_url = COALESCE(?, avatar_url)
+            WHERE username = ? OR email = ?
+          `).run(u.id, u.password_hash, u.full_name, u.phone, u.avatar_url, u.username, u.email);
+        } catch (inner) {}
+      }
     }
     console.log(`[Supabase→SQLite] Restored ${users.length} user accounts via Supabase client.`);
   }
@@ -114,9 +124,10 @@ export async function syncPostgresToSqlite(): Promise<void> {
     const insertUser = sqliteDb.prepare(`
       INSERT INTO users (id, username, email, password_hash, role, full_name, phone, avatar_url, status)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET
-        username = excluded.username,
+      ON CONFLICT(username) DO UPDATE SET
+        id = excluded.id,
         email = excluded.email,
+        password_hash = excluded.password_hash,
         full_name = excluded.full_name,
         phone = excluded.phone,
         avatar_url = COALESCE(excluded.avatar_url, users.avatar_url),
@@ -124,7 +135,16 @@ export async function syncPostgresToSqlite(): Promise<void> {
     `);
 
     for (const u of pgUsers) {
-      insertUser.run(u.id, u.username, u.email, u.password_hash, u.role, u.full_name, u.phone, u.avatar_url ?? null, u.status ?? 'Active');
+      try {
+        insertUser.run(u.id, u.username, u.email, u.password_hash, u.role, u.full_name, u.phone, u.avatar_url ?? null, u.status ?? 'Active');
+      } catch (e: any) {
+        try {
+          sqliteDb.prepare(`
+            UPDATE users SET id = ?, password_hash = ?, full_name = ?, phone = ?, avatar_url = COALESCE(?, avatar_url)
+            WHERE username = ? OR email = ?
+          `).run(u.id, u.password_hash, u.full_name, u.phone, u.avatar_url, u.username, u.email);
+        } catch (inner) {}
+      }
     }
     console.log(`[PG→SQLite] Restored ${pgUsers.length} user accounts.`);
 
