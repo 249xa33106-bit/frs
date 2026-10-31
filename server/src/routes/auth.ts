@@ -92,6 +92,57 @@ authRouter.post('/login', async (req, res) => {
       LEFT JOIN hostels h ON s.hostel_id = h.id
       WHERE s.user_id = ?
     `).get(user.id);
+
+    // Supabase Cloud fallback for student record if not yet cached in SQLite
+    if (!studentData) {
+      try {
+        const { data: supaStd } = await supabase
+          .from('students')
+          .select('*')
+          .eq('user_id', user.id)
+          .limit(1);
+
+        if (supaStd && supaStd.length > 0) {
+          studentData = supaStd[0];
+          try {
+            db.prepare(`
+              INSERT INTO students (
+                id, user_id, roll_number, full_name, email, phone, emergency_phone,
+                parent_name, parent_phone, hostel_id, block_id, floor_id, room_id,
+                room_number, department, year_of_study, current_status, has_face_enrolled,
+                photo_url
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              ON CONFLICT(roll_number) DO UPDATE SET
+                full_name = excluded.full_name,
+                room_number = excluded.room_number,
+                photo_url = COALESCE(excluded.photo_url, students.photo_url)
+            `).run(
+              studentData.id,
+              studentData.user_id,
+              studentData.roll_number,
+              studentData.full_name,
+              studentData.email,
+              studentData.phone,
+              studentData.emergency_phone || studentData.phone,
+              studentData.parent_name || 'Guardian',
+              studentData.parent_phone || studentData.phone,
+              studentData.hostel_id || 'hostel-tagore-main',
+              studentData.block_id,
+              studentData.floor_id,
+              studentData.room_id,
+              studentData.room_number,
+              studentData.department || 'Engineering',
+              studentData.year_of_study || 1,
+              studentData.current_status || 'Inside',
+              studentData.has_face_enrolled || 0,
+              studentData.photo_url
+            );
+          } catch (e) {}
+        }
+      } catch (e) {
+        console.warn('[Supabase Student Login Fallback Warning]', e);
+      }
+    }
   }
 
   // Update last_login
